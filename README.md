@@ -34,6 +34,10 @@ events.cacheMap(cache: MyCache()) { x -> Value in
 }
 ```
 
+## Installation
+
+CombineCacheMap is available as a Swift Package.
+
 ## Author
 
 brian.semiglia@gmail.com
