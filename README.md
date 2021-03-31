@@ -28,7 +28,7 @@ events.cacheFlatMapInvalidatingOn { x -> AnyPublisher<(Value, Date), Failure> in
     }
 }
 
-// You can provide your own cache (disk, in-memory, etc.). NSCache is the default.
+// You can provide your own cache. NSCache is the default.
 events.cacheMap(cache: MyCache()) { x -> Value in
     expensiveOperation(x)
 }
