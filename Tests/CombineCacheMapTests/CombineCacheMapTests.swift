@@ -218,4 +218,84 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
+    func testDiskPersistence() throws {
+
+        // Two separate cache instances are used but values are persisted between them.
+
+        let cache: Persisting<Int, Int> = Persisting<Int, Int>.diskCache()
+        cache.reset()
+
+        var cacheMissesInitial: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .cacheMap(cache: .diskCache()) { x -> Int in
+                    cacheMissesInitial += 1
+                    return x
+                }
+                .toBlocking(),
+            [1, 1]
+        )
+        XCTAssertEqual(
+            cacheMissesInitial,
+            1
+        )
+
+        var cacheMissesSubsequent: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .cacheMap(cache: .diskCache()) { x -> Int in
+                    cacheMissesSubsequent += 1
+                    return x
+                }
+                .toBlocking(),
+            [1, 1]
+        )
+        XCTAssertEqual(
+            cacheMissesSubsequent,
+            0
+        )
+    }
+
+    func testDiskPersistenceWithID() throws {
+      
+        // Two separate cache instances are used but values are persisted between them.
+
+        let id = "id"
+        let cache: Persisting<Int, Int> = Persisting<Int, Int>.diskCache(id: id)
+        cache.reset()
+
+        var cacheMissesInitial: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .cacheMap(cache: .diskCache(id: id)) { x -> Int in
+                    cacheMissesInitial += 1
+                    return x
+                }
+                .toBlocking(),
+            [1, 1]
+        )
+        XCTAssertEqual(
+            cacheMissesInitial,
+            1
+        )
+
+        var cacheMissesSubsequent: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .cacheMap(cache: .diskCache(id: id)) { x -> Int in
+                    cacheMissesSubsequent += 1
+                    return x
+                }
+                .toBlocking(),
+            [1, 1]
+        )
+        XCTAssertEqual(
+            cacheMissesSubsequent,
+            0
+        )
+    }
 }

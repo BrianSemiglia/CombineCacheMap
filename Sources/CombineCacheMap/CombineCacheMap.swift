@@ -245,11 +245,13 @@ public struct Persisting<Key, Value> {
 
     let set: (Value, Key) -> Void
     let value: (Key) -> Value?
+    private let _reset: () -> Void
 
     public init<Backing>(
         backing: Backing,
         set: @escaping (Backing, Value, Key) -> Void,
-        value: @escaping (Backing, Key) -> Value?
+        value: @escaping (Backing, Key) -> Value?,
+        reset: @escaping (Backing) -> Void
     ) {
         self.set = {
             set(backing, $0, $1)
@@ -257,6 +259,13 @@ public struct Persisting<Key, Value> {
         self.value = {
             value(backing, $0)
         }
+        self._reset = {
+            reset(backing)
+        }
+    }
+
+    public func reset() {
+        self._reset()
     }
 }
 
@@ -274,7 +283,36 @@ extension Persisting {
                 cache
                     .object(forKey: key as AnyObject)
                     .flatMap { $0 as? V }
+            },
+            reset: { backing in
+                backing.removeAllObjects()
             }
         )
     }
 }
+
+extension Persisting {
+    public static func diskCache<K: Hashable & Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
+        return Persisting<K, V>(
+            backing: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)"),
+            set: { folder, value, key in
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
+                } catch {
+                    print("Error saving to disk: \(error)")
+                }
+            },
+            value: { folder, key in
+                guard let data = try? Data(contentsOf: folder.appendingPathComponent("\(key)")) else { return nil }
+                return try? JSONDecoder().decode(V.self, from: data)
+            },
+            reset: { url in
+                try? FileManager.default.removeItem(
+                    at: url
+                )
+            }
+        )
+    }
+}
+
