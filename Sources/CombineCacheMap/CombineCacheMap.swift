@@ -289,9 +289,65 @@ extension Persisting {
             }
         )
     }
-}
 
-extension Persisting {
+    public static func diskCache<K: Hashable, V: Codable, E: Error>(id: String = "default") -> Persisting<K, AnyPublisher<V, E>> {
+        Persisting<K, AnyPublisher<V, E>>(
+            backing: (
+                NSCache<AnyObject, AnyObject>(),
+                URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)")
+            ),
+            set: { backing, value, key in
+                let shared = value
+                    .multicast(subject: UnboundReplaySubject())
+                    .autoconnect()
+                backing.0.setObject(
+                    Publishers.Merge(
+                        shared.eraseToAnyPublisher(),
+                        shared
+                            .reduce([V]()) { sum, next in sum + [next] }
+                            .handleEvents(receiveOutput: { next in
+                                do {
+                                    try FileManager.default.createDirectory(at: backing.1, withIntermediateDirectories: true)
+                                    try JSONEncoder()
+                                        .encode(next)
+                                        .write(to: backing.1.appendingPathComponent("\(key)"))
+                                } catch {
+
+                                }
+                            })
+                            .flatMap { _ in Empty<V, E>() } // publisher completes with nothing (void)
+                            .eraseToAnyPublisher()
+                    ).eraseToAnyPublisher() as AnyObject,
+                    forKey: key as AnyObject
+                )
+            },
+            value: { backing, key in
+                if let inMemory = backing.0.object(forKey: key as AnyObject) as? AnyPublisher<V, E> {
+                    // 1. This one has disk write side-effect
+                    return inMemory
+                } else if let data = try? Data(contentsOf: backing.1.appendingPathComponent("\(key)")) {
+                    // 2. Data is read back in ☝️
+                    if let values = try? JSONDecoder().decode([V].self, from: data) {
+                        let o = values.publisher.setFailureType(to: E.self).eraseToAnyPublisher()
+                        // 3. Data is made an observable again but without the disk write side-effect
+                        backing.0.setObject(o as AnyObject, forKey: key as AnyObject)
+                        return o
+                    } else {
+                        return nil
+                    }
+                } else {
+                    return nil
+                }
+            },
+            reset: { backing in
+                backing.0.removeAllObjects()
+                try? FileManager.default.removeItem(
+                    at: backing.1
+                )
+            }
+        )
+    }
+
     public static func diskCache<K: Hashable & Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
         return Persisting<K, V>(
             backing: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)"),
@@ -300,12 +356,12 @@ extension Persisting {
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
                 } catch {
-                    print("Error saving to disk: \(error)")
+
                 }
             },
             value: { folder, key in
-                guard let data = try? Data(contentsOf: folder.appendingPathComponent("\(key)")) else { return nil }
-                return try? JSONDecoder().decode(V.self, from: data)
+                (try? Data(contentsOf: folder.appendingPathComponent("\(key)")))
+                    .flatMap { data in try? JSONDecoder().decode(V.self, from: data) }
             },
             reset: { url in
                 try? FileManager.default.removeItem(

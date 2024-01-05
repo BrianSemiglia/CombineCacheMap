@@ -218,9 +218,9 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
-    func testDiskPersistence() throws {
+    func testDiskPersistenceMap() throws {
 
-        // Two separate cache instances are used but values are persisted between them.
+        // Separate cache instances are used but values are persisted between them.
 
         let cache: Persisting<Int, Int> = Persisting<Int, Int>.diskCache()
         cache.reset()
@@ -258,9 +258,9 @@ final class CombineCacheMapTests: XCTestCase {
         )
     }
 
-    func testDiskPersistenceWithID() throws {
-      
-        // Two separate cache instances are used but values are persisted between them.
+    func testDiskPersistenceWithIDMap() throws {
+
+        // Separate cache instances are used but values are persisted between them.
 
         let id = "id"
         let cache: Persisting<Int, Int> = Persisting<Int, Int>.diskCache(id: id)
@@ -297,5 +297,81 @@ final class CombineCacheMapTests: XCTestCase {
             cacheMissesSubsequent,
             0
         )
+
+        cache.reset()
+
+        var cacheMisses2: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .cacheMap(cache: .diskCache(id: id)) { x -> Int in
+                    cacheMisses2 += 1
+                    return x
+                }
+                .toBlocking(),
+            [1, 1]
+        )
+        XCTAssertEqual(
+            cacheMisses2,
+            1
+        )
+    }
+
+    func testDiskPersistenceFlatMap() {
+
+        // Separate cache instances are used but values are persisted between them.
+
+        let cache: Persisting<Int, Int> = .diskCache()
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1]
+                .publisher
+                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        _ = $0.receive(x)
+                        $0.receive(completion: .finished)
+                    }
+                }
+                .toBlocking(),
+            [1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 1)
+
+        var cacheMisses2: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1]
+                .publisher
+                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                    AnyPublisher.create {
+                        cacheMisses2 += 1
+                        _ = $0.receive(x)
+                        $0.receive(completion: .finished)
+                    }
+                }
+                .toBlocking(),
+            [1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses2, 0)
+
+        cache.reset()
+
+        var cacheMisses3: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1]
+                .publisher
+                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                    AnyPublisher.create {
+                        cacheMisses3 += 1
+                        _ = $0.receive(x)
+                        $0.receive(completion: .finished)
+                    }
+                }
+                .toBlocking(),
+            [1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses3, 1)
     }
 }
