@@ -45,8 +45,9 @@ final class CombineCacheMapTests: XCTestCase {
                 .cacheFlatMap { x -> AnyPublisher<Int, Never> in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        _ = $0.receive(x)
-                        $0.receive(completion: .finished)
+                        $0.send(x)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .toBlocking(),
@@ -63,12 +64,13 @@ final class CombineCacheMapTests: XCTestCase {
                 .cacheFlatMap { _ -> AnyPublisher<String, Never> in
                     AnyPublisher<String, Never>.create {
                         cacheMisses += 1
-                        _ = $0.receive("1")
-                        _ = $0.receive("2")
-                        _ = $0.receive("3")
-                        _ = $0.receive("4")
-                        _ = $0.receive("5")
-                        $0.receive(completion: .finished)
+                        $0.send("1")
+                        $0.send("2")
+                        $0.send("3")
+                        $0.send("4")
+                        $0.send("5")
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .reduce("", +)
@@ -86,8 +88,9 @@ final class CombineCacheMapTests: XCTestCase {
                 .cacheFlatMap(when: { $0 == 1 }) { x -> AnyPublisher<Int, Never> in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        _ = $0.receive(x)
-                        $0.receive(completion: .finished)
+                        $0.send(x)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .toBlocking(),
@@ -107,8 +110,9 @@ final class CombineCacheMapTests: XCTestCase {
             .cacheFlatMapLatest { x in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    _ = $0.receive(x)
-                    $0.receive(completion: .finished)
+                    $0.send(x)
+                    $0.send(completion: .finished)
+                    return AnyCancellable {}
                 }
                 .delay(
                     for: .seconds(1),
@@ -133,11 +137,12 @@ final class CombineCacheMapTests: XCTestCase {
             .cacheFlatMapInvalidatingOn { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    _ = $0.receive((
+                    $0.send((
                         x,
                         Date() + 2
                     ))
-                    $0.receive(completion: .finished)
+                    $0.send(completion: .finished)
+                    return AnyCancellable {}
                 }
             }
             .toBlocking(timeout: 2),
@@ -157,11 +162,12 @@ final class CombineCacheMapTests: XCTestCase {
             .cacheFlatMapInvalidatingOn { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    _ = $0.receive((
+                    $0.send((
                         x,
                         Date() + 0.6
                     ))
-                    $0.receive(completion: .finished)
+                    $0.send(completion: .finished)
+                    return AnyCancellable {}
                 }
             }
             .toBlocking(timeout: 2),
@@ -328,11 +334,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .diskCache()) { x in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        _ = $0.receive(x)
-                        $0.receive(completion: .finished)
+                        $0.send(x)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .toBlocking(),
@@ -344,11 +352,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .diskCache()) { x in
                     AnyPublisher.create {
                         cacheMisses2 += 1
-                        _ = $0.receive(x)
-                        $0.receive(completion: .finished)
+                        $0.send(x)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .toBlocking(),
@@ -362,16 +372,48 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .cacheFlatMap(cache: .diskCache()) { x -> AnyPublisher<Int, Never> in
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .diskCache()) { x in
                     AnyPublisher.create {
                         cacheMisses3 += 1
-                        _ = $0.receive(x)
-                        $0.receive(completion: .finished)
+                        $0.send(x)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
                     }
                 }
                 .toBlocking(),
             [1, 1, 1]
         )
         XCTAssertEqual(cacheMisses3, 1)
+    }
+
+    func testDiskPersistedErrorReplay() {
+
+        struct Foo: Error {}
+
+        persistToDisk(
+            key: 1,
+            item: AnyPublisher<Int, Foo>.create {
+                $0.send(1)
+                $0.send(1)
+                $0.send(completion: .failure(Foo()))
+                return AnyCancellable {}
+            }
+        )
+
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .diskCache()) { _ in
+                    cacheMisses += 1
+                    return Empty().eraseToAnyPublisher() // Closure shouldn't execute as it should be cached
+                }
+                .replaceError(with: 99)
+                .toBlocking(),
+            [1, 1, 99]
+        )
+        XCTAssertEqual(cacheMisses, 0)
     }
 }
