@@ -262,6 +262,8 @@ final class CombineCacheMapTests: XCTestCase {
             cacheMissesSubsequent,
             0
         )
+
+        cache.reset()
     }
 
     func testDiskPersistenceWithIDMap() throws {
@@ -321,6 +323,8 @@ final class CombineCacheMapTests: XCTestCase {
             cacheMisses2,
             1
         )
+
+        cache.reset()
     }
 
     func testDiskPersistenceFlatMap() {
@@ -330,6 +334,7 @@ final class CombineCacheMapTests: XCTestCase {
         let cache: Persisting<Int, Int> = .diskCache()
         cache.reset()
 
+        // NEW
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             [1, 1, 1]
@@ -348,6 +353,7 @@ final class CombineCacheMapTests: XCTestCase {
         )
         XCTAssertEqual(cacheMisses, 1)
 
+        // EXISTING
         var cacheMisses2: Int = 0
         try XCTAssertEqual(
             [1, 1, 1]
@@ -368,6 +374,7 @@ final class CombineCacheMapTests: XCTestCase {
 
         cache.reset()
 
+        // RESET
         var cacheMisses3: Int = 0
         try XCTAssertEqual(
             [1, 1, 1]
@@ -385,13 +392,16 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1, 1]
         )
         XCTAssertEqual(cacheMisses3, 1)
+
+        cache.reset()
     }
 
     func testDiskPersistedErrorReplay() {
 
         struct Foo: Error {}
 
-        persistToDisk(
+        let cache: Persisting<Int, Int> = .diskCache()
+        cache.persistToDisk(
             key: 1,
             item: AnyPublisher<Int, Foo>.create {
                 $0.send(1)
@@ -415,5 +425,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1, 99]
         )
         XCTAssertEqual(cacheMisses, 0)
+
+        cache.reset()
     }
 }

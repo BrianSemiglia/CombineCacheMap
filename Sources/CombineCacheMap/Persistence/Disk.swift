@@ -4,12 +4,15 @@ import CombineExt
 import CryptoKit
 
 extension Persisting {
+
+    private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
+
     public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
         Persisting<K, AnyPublisher<V, Error>>(
             backing: (
                 writes: NSCache<AnyObject, AnyObject>(),
                 memory: NSCache<AnyObject, AnyObject>(),
-                disk: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)")
+                disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
@@ -63,7 +66,7 @@ extension Persisting {
 
     public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
         return Persisting<K, V>(
-            backing: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)"),
+            backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 do {
@@ -86,10 +89,21 @@ extension Persisting {
         )
     }
 
-    fileprivate static func sha256Hash<T: Codable>(for data: T) throws -> String {
-        let keyData = try JSONEncoder().encode(data)
-        let hash = SHA256.hash(data: keyData)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    private static func sha256Hash<T: Codable>(for data: T) throws -> String {
+        SHA256
+            .hash(data: try JSONEncoder().encode(data))
+            .compactMap { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    // Testing
+    internal func persistToDisk<K: Codable, V: Codable, E: Error>(key: K, item: AnyPublisher<V, E>) {
+        _ = item
+            .persistingOutputAsSideEffect(
+                to: Self.directory.appendingPathExtension("default"),
+                withKey: try! Persisting<K, V>.sha256Hash(for: key)
+            )
+            .sink { _ in }
     }
 }
 
@@ -107,7 +121,7 @@ private struct WrappedEvent<T: Codable>: Codable {
         }
     }
 
-    enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey {
         case next, error, completed
     }
 
@@ -151,7 +165,7 @@ private struct WrappedEvent<T: Codable>: Codable {
     }
 }
 
-fileprivate extension Publishers {
+private extension Publishers {
     static func publisher<T>(from wrappedEvents: [WrappedEvent<T>]) -> AnyPublisher<T, Error> {
         wrappedEvents
             .publisher
@@ -177,17 +191,7 @@ fileprivate extension Publishers {
     }
 }
 
-// Testing
-public func persistToDisk<K: Codable, V: Codable, E: Error>(key: K, item: AnyPublisher<V, E>) {
-    _ = item
-        .persistingOutputAsSideEffect(
-            to: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.default"),
-            withKey: try! Persisting<K, V>.sha256Hash(for: key)
-        )
-        .sink { _ in }
-}
-
-extension AnyPublisher {
+private extension AnyPublisher {
     func persistingOutputAsSideEffect<Key>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable {
         self
             .materialize()
