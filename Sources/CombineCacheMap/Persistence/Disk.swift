@@ -1,9 +1,10 @@
 import Foundation
 import Combine
 import CombineExt
+import CryptoKit
 
 extension Persisting {
-    public static func diskCache<K: Hashable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
+    public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
         Persisting<K, AnyPublisher<V, Error>>(
             backing: (
                 writes: NSCache<AnyObject, AnyObject>(),
@@ -11,6 +12,7 @@ extension Persisting {
                 disk: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)")
             ),
             set: { backing, value, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 let shared = value
                     .multicast(subject: UnboundReplaySubject<V, Error>())
                     .autoconnect()
@@ -18,18 +20,8 @@ extension Persisting {
                     Publishers.Merge(
                         shared.eraseToAnyPublisher(),
                         shared
-                            .materialize()
-                            .collect()
-                            .handleEvents(receiveOutput: { next in
-                                do {
-                                    try FileManager.default.createDirectory(at: backing.disk, withIntermediateDirectories: true)
-                                    try JSONEncoder()
-                                        .encode(next.map(WrappedEvent.init(event:)))
-                                        .write(to: backing.disk.appendingPathComponent("\(key)"))
-                                } catch {
-
-                                }
-                            })
+                            .eraseToAnyPublisher()
+                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
                             .flatMap { _ in Empty<V, Error>() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
@@ -38,6 +30,7 @@ extension Persisting {
                 )
             },
             value: { backing, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 if let write = backing.writes.object(forKey: key as AnyObject) as? AnyPublisher<V, Error> {
                     // 1. This observable has disk write side-effect. Removal from in-memory cache causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key as AnyObject) // SIDE-EFFECT
@@ -68,10 +61,11 @@ extension Persisting {
         )
     }
 
-    public static func diskCache<K: Hashable, V: Codable>(id: String = "default") -> Persisting<K, V> {
+    public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
         return Persisting<K, V>(
             backing: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.\(id)"),
             set: { folder, value, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 do {
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
@@ -80,7 +74,8 @@ extension Persisting {
                 }
             },
             value: { folder, key in
-                (try? Data(contentsOf: folder.appendingPathComponent("\(key)")))
+                (try? Persisting.sha256Hash(for: key))
+                    .flatMap { key in try? Data(contentsOf: folder.appendingPathComponent("\(key)")) }
                     .flatMap { data in try? JSONDecoder().decode(V.self, from: data) }
             },
             reset: { url in
@@ -89,6 +84,12 @@ extension Persisting {
                 )
             }
         )
+    }
+
+    fileprivate static func sha256Hash<T: Codable>(for data: T) throws -> String {
+        let keyData = try JSONEncoder().encode(data)
+        let hash = SHA256.hash(data: keyData)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -177,26 +178,34 @@ fileprivate extension Publishers {
 }
 
 // Testing
-public func persistToDisk<K: Hashable, V: Codable, E: Error>(key: K, item: AnyPublisher<V, E>) {
+public func persistToDisk<K: Codable, V: Codable, E: Error>(key: K, item: AnyPublisher<V, E>) {
     _ = item
-    .materialize()
-    .collect()
-    .handleEvents(receiveOutput: { next in
-        do {
-            try FileManager.default.createDirectory(
-                at: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.default"), 
-                withIntermediateDirectories: true
-            )
-            try JSONEncoder()
-                .encode(next.map(WrappedEvent.init(event:)))
-                .write(
-                    to: URL(fileURLWithPath: NSTemporaryDirectory())
-                        .appendingPathComponent("com.cachemap.combine.default")
-                        .appendingPathComponent("\(key)")
-                )
-        } catch {
+        .persistingOutputAsSideEffect(
+            to: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine.default"),
+            withKey: try! Persisting<K, V>.sha256Hash(for: key)
+        )
+        .sink { _ in }
+}
 
-        }
-    })
-    .sink(receiveValue: { _ in })
+extension AnyPublisher {
+    func persistingOutputAsSideEffect<Key>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable {
+        self
+            .materialize()
+            .collect()
+            .handleEvents(receiveOutput: { next in
+                do {
+                    try FileManager.default.createDirectory(
+                        at: url,
+                        withIntermediateDirectories: true
+                    )
+                    try JSONEncoder()
+                        .encode(next.map(WrappedEvent.init(event:)))
+                        .write(to: url.appendingPathComponent("\(key)"))
+                } catch {
+
+                }
+            })
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
 }
