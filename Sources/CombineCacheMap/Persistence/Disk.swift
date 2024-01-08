@@ -10,8 +10,8 @@ extension Persisting {
     public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
         Persisting<K, AnyPublisher<V, Error>>(
             backing: (
-                writes: NSCache<AnyObject, AnyObject>(),
-                memory: NSCache<AnyObject, AnyObject>(),
+                writes: TypedCache<String, AnyPublisher<V, Error>>(),
+                memory: TypedCache<String, AnyPublisher<V, Error>>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -28,25 +28,25 @@ extension Persisting {
                             .setFailureType(to: Error.self)
                             .flatMap { _ in Empty<V, Error>() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
-                    ).eraseToAnyPublisher() as AnyObject,
-                    forKey: key as AnyObject
+                    ).eraseToAnyPublisher(),
+                    forKey: key
                 )
             },
             value: { backing, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                if let write = backing.writes.object(forKey: key as AnyObject) as? AnyPublisher<V, Error> {
+                if let write = backing.writes.object(forKey: key) {
                     // 1. This observable has disk write side-effect. Removal from in-memory cache causes next access to trigger disk read.
-                    backing.writes.removeObject(forKey: key as AnyObject) // SIDE-EFFECT
+                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
                     return write
-                } else if let memory = backing.memory.object(forKey: key as AnyObject) as? AnyPublisher<V, Error> {
+                } else if let memory = backing.memory.object(forKey: key) {
                     // 4. Further gets come from memory
                     return memory
                 } else if let data = try? Data(contentsOf: backing.disk.appendingPathComponent("\(key)")) {
                     // 2. Data is read back in ☝️
                     if let values = try? JSONDecoder().decode([WrappedEvent<V>].self, from: data) {
-                        let o = Publishers.publisher(from: values) as AnyPublisher<V, Error>
                         // 3. Data is made an observable again but without the disk write side-effect
-                        backing.memory.setObject(o as AnyObject, forKey: key as AnyObject)
+                        let o = Publishers.publisher(from: values)
+                        backing.memory.setObject(o, forKey: key)
                         return o
                     } else {
                         return nil
@@ -104,6 +104,22 @@ extension Persisting {
                 withKey: try! Persisting<K, V>.sha256Hash(for: key)
             )
             .sink { _ in }
+    }
+}
+
+private struct TypedCache<Key, Value> {
+    private let storage: NSCache<AnyObject, AnyObject> = .init()
+    func object(forKey key: Key) -> Value? {
+        storage.object(forKey: key as AnyObject) as? Value
+    }
+    func setObject(_ value: Value, forKey key: Key) {
+        storage.setObject(value as AnyObject, forKey: key as AnyObject)
+    }
+    func removeObject(forKey key: Key) {
+        storage.removeObject(forKey: key as AnyObject)
+    }
+    func removeAllObjects() {
+        storage.removeAllObjects()
     }
 }
 
