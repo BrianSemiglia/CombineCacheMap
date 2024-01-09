@@ -30,10 +30,9 @@ extension Publisher where Output: Hashable {
                 let end = Date()
                 if duration.seconds.map({ end.timeIntervalSince(start) > $0 }) == true {
                     return (
-                        cache: Self.adding(
+                        cache: cache.adding(
                             key: $1,
-                            value: result,
-                            cache: $0.cache
+                            value: result
                         ),
                         key: $1,
                         value: nil
@@ -66,10 +65,9 @@ extension Publisher where Output: Hashable {
             key: Optional<Output>.none,
             value: Optional<T>.none
         )) {(
-            cache: condition($1) == false ? $0.cache : Self.adding(
+            cache: condition($1) == false ? $0.cache : cache.adding(
                 key: $1,
-                value: transform($1),
-                cache: $0.cache
+                value: transform($1)
             ),
             key: $1,
             value: condition($1) ? nil : transform($1)
@@ -132,14 +130,12 @@ extension Publisher where Output: Hashable {
             key: Optional<Output>.none,
             value: Optional<AnyPublisher<T, Failure>>.none
         )) {(
-            cache: condition($1) == false ? $0.cache : Self.adding(
+            cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
                 value: input($1)
                     .multicast(subject: UnboundReplaySubject())
                     .autoconnect()
                     .eraseToAnyPublisher()
-                ,
-                cache: $0.cache
             ),
             key: $1,
             value: condition($1) ? nil : input($1)
@@ -176,10 +172,9 @@ extension Publisher where Output: Hashable {
             key: Optional<Output>.none,
             value: Optional<AnyPublisher<T, Failure>>.none
         )) {(
-            cache: condition($1) == false ? $0.cache : Self.adding(
+            cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
-                value: Self.replayingInvalidatingOn(input: input($1)),
-                cache: $0.cache
+                value: Self.replayingInvalidatingOn(input: input($1))
             ),
             key: $1,
             value: condition($1) ? nil : input($1).map { $0.0 }.eraseToAnyPublisher()
@@ -203,22 +198,6 @@ extension Publisher where Output: Hashable {
                     : replayingInvalidatingOn(input: input)
             }
             .eraseToAnyPublisher()
-    }
-
-    private static func adding<Key, Value>(
-        key: Key,
-        value: @autoclosure () -> Value,
-        cache: Persisting<Key, Value>
-    ) -> Persisting<Key, Value> {
-        if cache.value(key) == nil {
-            cache.set(
-                value(),
-                key
-            )
-            return cache
-        } else {
-            return cache
-        }
     }
 }
 

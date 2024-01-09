@@ -65,7 +65,7 @@ extension Persisting {
     }
 
     public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
-        return Persisting<K, V>(
+        Persisting<K, V>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap

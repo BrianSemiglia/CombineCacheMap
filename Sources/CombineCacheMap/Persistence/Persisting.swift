@@ -25,3 +25,20 @@ public struct Persisting<Key, Value> {
         self._reset()
     }
 }
+
+extension Persisting {
+    func adding(
+        key: Key,
+        value: @autoclosure () -> Value
+    ) -> Persisting<Key, Value> {
+        if self.value(key) == nil {
+            self.set(
+                value(),
+                key
+            )
+            return self
+        } else {
+            return self
+        }
+    }
+}
