@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Dispatch
+import CombineExt
 
 extension Publisher where Output: Hashable {
 
@@ -149,7 +150,7 @@ extension Publisher where Output: Hashable {
     /**
      Caches publishers and replays their events when latest incoming value equals a previous value and output Date is greater than Date of event else produces new events.
      */
-    public func cacheFlatMapInvalidatingOn<T>(
+    public func cacheFlatMapUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
         cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
@@ -174,7 +175,7 @@ extension Publisher where Output: Hashable {
         )) {(
             cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
-                value: Self.replayingInvalidatingOn(input: input($1))
+                value: Self.replayingUntilDateOf(publisher: input, from: $1).eraseToAnyPublisher()
             ),
             key: $1,
             value: condition($1) ? nil : input($1).map { $0.0 }.eraseToAnyPublisher()
@@ -185,19 +186,40 @@ extension Publisher where Output: Hashable {
         }
     }
 
-    private static func replayingInvalidatingOn<T>(
-        input: AnyPublisher<(T, Date), Failure>
+    private static func replayingUntilDateOf<T>(
+        publisher: @escaping (Output) -> AnyPublisher<(T, Date), Failure>,
+        from: Output
     ) -> AnyPublisher<T, Failure> {
-        let now = { Date() }
-        return input
-            .multicast(subject: UnboundReplaySubject())
-            .autoconnect()
-            .flatMap { new, expiration in
-                expiration >= now()
-                    ? Combine.Just(new).setFailureType(to: Failure.self).eraseToAnyPublisher()
-                    : replayingInvalidatingOn(input: input)
+        var override = Date(timeIntervalSince1970: 0)
+        func expirationCheck(_ incoming: AnyPublisher<(T, Date), Failure>) -> AnyPublisher<T, Failure> {
+            incoming.flatMap { new, expiration in
+                override = override > expiration ? override : expiration
+                if Date() < override {
+                    return Just(new)
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                } else {
+                    return publisher(from)
+                        .flatMap { new, expiration in
+                            override = expiration
+                            return expirationCheck(
+                                Just((new, expiration))
+                                    .setFailureType(to: Failure.self)
+                                    .eraseToAnyPublisher()
+                            )
+                        }
+                        .eraseToAnyPublisher()
+                }
             }
             .eraseToAnyPublisher()
+        }
+
+        return expirationCheck(
+            publisher(from)
+                .multicast(subject: UnboundReplaySubject())
+                .autoconnect()
+                .eraseToAnyPublisher()
+        )
     }
 }
 

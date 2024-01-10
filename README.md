@@ -20,7 +20,7 @@ events.cacheMap(whenExceeding: .seconds(1)) { x -> Value in
     expensiveOperation(x)
 }
 
-events.cacheFlatMapInvalidatingOn { x -> AnyPublisher<(Value, Date), Failure> in
+events.cacheFlatMapUntilDateOf { x -> AnyPublisher<(Value, Date), Failure> in
     // Closure executed once per unique `x`, replayed when input not unique. Cache 
     // invalidated when date returned is greater than or equal to date of map execution.
     expensiveOperation(x).map { output in 

@@ -134,7 +134,7 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .milliseconds(Int(0.5 * 1000)), scheduler: RunLoop.main), // cached
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main) // invalidate, called
             )
-            .cacheFlatMapInvalidatingOn { (x: Int) -> AnyPublisher<(Int, Date), Never> in
+            .cacheFlatMapUntilDateOf { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
                     $0.send((
@@ -151,29 +151,31 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 1)
     }
 
-    func testCacheFlatMapInvalidatingOnSome() {
+    func testCacheFlatMapInvalidatingOnSome() throws {
         var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            Publishers.MergeMany(
-                Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // called
-                Just(1).delay(for: .milliseconds(Int(0.5 * 1000)), scheduler: RunLoop.main), // cached
-                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main) // invalidated, called
+        XCTAssertEqual(
+            try Publishers.MergeMany(
+                Just(1).delay(for: .seconds(0), scheduler: DispatchQueue.global()),  // miss
+                Just(1).delay(for: .seconds(1), scheduler: DispatchQueue.global()),  // cached
+                Just(1).delay(for: .seconds(4), scheduler: DispatchQueue.global()),  // miss
+                Just(1).delay(for: .seconds(5), scheduler: DispatchQueue.global()),  // cached
+                Just(1).delay(for: .seconds(8), scheduler: DispatchQueue.global()),  // miss
+                Just(1).delay(for: .seconds(9), scheduler: DispatchQueue.global()),  // cached
+                Just(1).delay(for: .seconds(12), scheduler: DispatchQueue.global()), // miss
+                Just(1).delay(for: .seconds(13), scheduler: DispatchQueue.global())  // cached
             )
-            .cacheFlatMapInvalidatingOn { (x: Int) -> AnyPublisher<(Int, Date), Never> in
+            .cacheFlatMapUntilDateOf { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    $0.send((
-                        x,
-                        Date() + 0.6
-                    ))
+                    $0.send((x, Date() + 2))
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
             }
-            .toBlocking(timeout: 2),
-            [1, 1, 1]
+            .toBlocking(timeout: 14),
+            [1, 1, 1, 1, 1, 1, 1, 1]
         )
-        XCTAssertEqual(cacheMisses, 2)
+        XCTAssertEqual(cacheMisses, 4)
     }
 
     func testCacheMapWhenExceedingDurationAll() {
