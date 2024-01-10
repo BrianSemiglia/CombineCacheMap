@@ -133,10 +133,7 @@ extension Publisher where Output: Hashable {
         )) {(
             cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
-                value: input($1)
-                    .multicast(subject: UnboundReplaySubject())
-                    .autoconnect()
-                    .eraseToAnyPublisher()
+                value: input($1).replayingIndefinitely
             ),
             key: $1,
             value: condition($1) ? nil : input($1)
@@ -215,11 +212,17 @@ extension Publisher where Output: Hashable {
         }
 
         return expirationCheck(
-            publisher(from)
-                .multicast(subject: UnboundReplaySubject())
-                .autoconnect()
-                .eraseToAnyPublisher()
+            publisher(from).replayingIndefinitely
         )
+    }
+}
+
+private extension Publisher {
+    var replayingIndefinitely: AnyPublisher<Output, Failure> {
+        self
+            .multicast(subject: UnboundReplaySubject())
+            .autoconnect()
+            .eraseToAnyPublisher()
     }
 }
 
