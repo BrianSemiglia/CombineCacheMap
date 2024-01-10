@@ -14,7 +14,7 @@ extension Publisher where Output: Hashable {
         cache: Persisting<Output, T> = .nsCache(),
         input: @escaping (Output) -> T
     ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, T>, key: Optional<Self.Output>, value: Optional<T>)>, T> {
-        return scan((
+        scan((
             cache: cache,
             key: Optional<Output>.none,
             value: Optional<T>.none
@@ -61,7 +61,7 @@ extension Publisher where Output: Hashable {
         when condition: @escaping (Output) -> Bool = { _ in true },
         transform: @escaping (Output) -> T
     ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, T>, key: Optional<Self.Output>, value: Optional<T>)>, T> {
-        return scan((
+        scan((
             cache: cache,
             key: Optional<Output>.none,
             value: Optional<T>.none
@@ -87,7 +87,7 @@ extension Publisher where Output: Hashable {
         when condition: @escaping (Output) -> Bool = { _ in true },
         publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
     ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        return cachedReplay(
+        cachedReplay(
             cache: cache,
             when: condition,
             publisher: input
@@ -113,7 +113,7 @@ extension Publisher where Output: Hashable {
         when condition: @escaping (Output) -> Bool = { _ in true },
         publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
     ) -> Publishers.SwitchToLatest<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        return cachedReplay(
+        cachedReplay(
             cache: cache,
             when: condition,
             publisher: input
@@ -126,7 +126,7 @@ extension Publisher where Output: Hashable {
         when condition: @escaping (Output) -> Bool = { _ in true },
         publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
     ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>> {
-        return scan((
+        scan((
             cache: cache,
             key: Optional<Output>.none,
             value: Optional<AnyPublisher<T, Failure>>.none
@@ -152,7 +152,7 @@ extension Publisher where Output: Hashable {
         cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
     ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        return cachedReplayingUntilDateOf(
+        cachedReplayingUntilDateOf(
             when: condition,
             cache: cache,
             publisher: input
@@ -165,7 +165,7 @@ extension Publisher where Output: Hashable {
         cache: Persisting<Output, AnyPublisher<T, Failure>>,
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
     ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>> {
-        return scan((
+        scan((
             cache: cache,
             key: Optional<Output>.none,
             value: Optional<AnyPublisher<T, Failure>>.none
