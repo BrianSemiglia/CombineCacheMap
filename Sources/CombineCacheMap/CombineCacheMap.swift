@@ -47,9 +47,9 @@ extension Publisher where Output: Hashable {
                 }
             }
         }
-        .compactMap { tuple in
-            tuple.value ??
-            tuple.key.flatMap { tuple.cache.value($0) }
+        .compactMap { (cache: Persisting<Output, T>, key: Output?, value: T?) in
+            value ??
+            key.flatMap { cache.value($0) }
         }
     }
 
@@ -73,9 +73,9 @@ extension Publisher where Output: Hashable {
             key: $1,
             value: condition($1) ? nil : transform($1)
         )}
-        .compactMap { tuple in
-            tuple.value ??
-            tuple.key.flatMap { tuple.cache.value($0) }
+        .compactMap { (cache: Persisting<Output, T>, key: Output?, value: T?) in
+            value ??
+            key.flatMap { cache.value($0) }
         }
     }
 
@@ -98,7 +98,7 @@ extension Publisher where Output: Hashable {
     /**
      Cancels previous Publisher and flatmaps provided Publisher. Exists as a convenience when toggling between `cacheFlatMapLatest` and `flatMapLatest`.
      */
-    func flatMapLatest<T>(
+    private func flatMapLatest<T>(
         publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
     ) -> Publishers.SwitchToLatest<AnyPublisher<T, Self.Failure>, Publishers.Map<Self, AnyPublisher<T, Self.Failure>>> {
         map(input).switchToLatest()
@@ -141,9 +141,9 @@ extension Publisher where Output: Hashable {
             key: $1,
             value: condition($1) ? nil : input($1)
         )}
-        .compactMap { tuple in
-            tuple.value ??
-            tuple.key.flatMap { tuple.cache.value($0) }
+        .compactMap { (cache: Persisting<Output, AnyPublisher<T, Failure>>, key: Output?, value: AnyPublisher<T, Failure>?) in
+            value ??
+            key.flatMap { cache.value($0) }
         }
     }
 
@@ -155,7 +155,7 @@ extension Publisher where Output: Hashable {
         cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
     ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        return cachedReplayInvalidatingOn(
+        return cachedReplayingUntilDateOf(
             when: condition,
             cache: cache,
             publisher: input
@@ -163,7 +163,7 @@ extension Publisher where Output: Hashable {
         .flatMap { $0 }
     }
 
-    private func cachedReplayInvalidatingOn<T>(
+    private func cachedReplayingUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
         cache: Persisting<Output, AnyPublisher<T, Failure>>,
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
@@ -180,9 +180,9 @@ extension Publisher where Output: Hashable {
             key: $1,
             value: condition($1) ? nil : input($1).map { $0.0 }.eraseToAnyPublisher()
         )}
-        .compactMap { tuple in
-            tuple.value?.eraseToAnyPublisher() ??
-            tuple.key.flatMap { tuple.cache.value($0) }
+        .compactMap { (cache: Persisting<Output, AnyPublisher<T, Failure>>, key: Output?, value: AnyPublisher<T, Failure>?) in
+            value?.eraseToAnyPublisher() ??
+            key.flatMap { cache.value($0) }
         }
     }
 
