@@ -2,7 +2,7 @@
 
 ## Description
 
-Cache/memoize the output of `Combine.Publishers` using `cacheMap`, `cacheFlatMap`, `cacheFlatMapLatest` and `cacheFlatMapUntilExpired`. Also available for RxSwift: https://github.com/BrianSemiglia/RxCacheMap
+Cache/memoize the output of `Combine.Publishers`. Also available for RxSwift: https://github.com/BrianSemiglia/RxCacheMap
 
 ## Usage
 
@@ -28,7 +28,7 @@ events.cacheFlatMapUntilDateOf { x -> AnyPublisher<(Value, Date), Failure> in
     }
 }
 
-// You can provide your own cache. NSCache is the default and a persistent one (.diskCache) is also available.
+// Use your own cache or the included .nsCache and .diskCache stores.
 events.cacheMap(cache: MyCache()) { x -> Value in
     expensiveOperation(x)
 }
