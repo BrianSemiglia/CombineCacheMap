@@ -104,8 +104,8 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             Publishers.MergeMany(
                 Just(2).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled
-                Just(1).delay(for: .milliseconds(Int(0.5 * 1000)), scheduler: RunLoop.main), // succeeds
-                Just(1).delay(for: .seconds(2), scheduler: RunLoop.main) // succeeds from cache
+                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+                Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
             )
             .cacheFlatMapLatest { x in
                 AnyPublisher.create {
@@ -114,13 +114,10 @@ final class CombineCacheMapTests: XCTestCase {
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
-                .delay(
-                    for: .seconds(1),
-                    scheduler: RunLoop.main
-                )
+                .delay(for: .seconds(2), scheduler: RunLoop.main)
                 .eraseToAnyPublisher()
             }
-            .toBlocking(timeout: 3),
+            .toBlocking(timeout: 7),
             [1, 1]
         )
         XCTAssertEqual(cacheMisses, 2)
@@ -130,22 +127,19 @@ final class CombineCacheMapTests: XCTestCase {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             Publishers.MergeMany(
-                Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // called
-                Just(1).delay(for: .milliseconds(Int(0.5 * 1000)), scheduler: RunLoop.main), // cached
-                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main) // invalidate, called
+                Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // missed
+                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+                Just(1).delay(for: .seconds(2), scheduler: RunLoop.main)  // replayed
             )
             .cacheFlatMapUntilDateOf { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    $0.send((
-                        x,
-                        Date() + 2
-                    ))
+                    $0.send((x, Date() + 20))
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
             }
-            .toBlocking(timeout: 2),
+            .toBlocking(timeout: 4),
             [1, 1, 1]
         )
         XCTAssertEqual(cacheMisses, 1)
@@ -155,25 +149,25 @@ final class CombineCacheMapTests: XCTestCase {
         var cacheMisses: Int = 0
         XCTAssertEqual(
             try Publishers.MergeMany(
-                Just(1).delay(for: .seconds(0), scheduler: DispatchQueue.global()),  // miss
-                Just(1).delay(for: .seconds(1), scheduler: DispatchQueue.global()),  // cached
-                Just(1).delay(for: .seconds(4), scheduler: DispatchQueue.global()),  // miss
-                Just(1).delay(for: .seconds(5), scheduler: DispatchQueue.global()),  // cached
-                Just(1).delay(for: .seconds(8), scheduler: DispatchQueue.global()),  // miss
-                Just(1).delay(for: .seconds(9), scheduler: DispatchQueue.global()),  // cached
-                Just(1).delay(for: .seconds(12), scheduler: DispatchQueue.global()), // miss
-                Just(1).delay(for: .seconds(13), scheduler: DispatchQueue.global())  // cached
+                Just(1).delay(for: .seconds(0), scheduler: DispatchQueue.global()),  // miss 1
+                Just(1).delay(for: .seconds(1), scheduler: DispatchQueue.global()),  // replayed
+                Just(1).delay(for: .seconds(4), scheduler: DispatchQueue.global()),  // miss 2
+                Just(1).delay(for: .seconds(5), scheduler: DispatchQueue.global()),  // replayed
+                Just(1).delay(for: .seconds(8), scheduler: DispatchQueue.global()),  // miss 3
+                Just(1).delay(for: .seconds(9), scheduler: DispatchQueue.global()),  // replayed
+                Just(1).delay(for: .seconds(12), scheduler: DispatchQueue.global()), // miss 4
+                Just(1).delay(for: .seconds(13), scheduler: DispatchQueue.global())  // replayed
             )
             .cacheFlatMapUntilDateOf { (x: Int) -> AnyPublisher<(Int, Date), Never> in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    $0.send((x, Date() + 2))
+                    $0.send((cacheMisses > 2 ? x + 1: x, Date() + 2))
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
             }
             .toBlocking(timeout: 14),
-            [1, 1, 1, 1, 1, 1, 1, 1]
+            [1, 1, 1, 1, 2, 2, 2, 2]
         )
         XCTAssertEqual(cacheMisses, 4)
     }

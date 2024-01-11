@@ -187,33 +187,34 @@ extension Publisher where Output: Hashable {
         publisher: @escaping (Output) -> AnyPublisher<(T, Date), Failure>,
         from: Output
     ) -> AnyPublisher<T, Failure> {
-        var override = Date(timeIntervalSince1970: 0)
-        func expirationCheck(_ incoming: AnyPublisher<(T, Date), Failure>) -> AnyPublisher<T, Failure> {
-            incoming.flatMap { new, expiration in
-                override = override > expiration ? override : expiration
-                if Date() < override {
-                    return Just(new)
+        var newExpiration = Date(timeIntervalSince1970: 0)
+        var newPublisher: AnyPublisher<T, Failure>?
+
+        return publisher(from)
+            .replayingIndefinitely
+            .flatMap { new, expiration in
+                newExpiration = newExpiration > expiration ? newExpiration : expiration
+                if Date() < newExpiration {
+                    newPublisher = newPublisher ?? Just(new)
                         .setFailureType(to: Failure.self)
                         .eraseToAnyPublisher()
+                    return newPublisher!
                 } else {
-                    return publisher(from)
+                    newPublisher = publisher(from)
+                        .handleEvents(receiveOutput: { new, expiration in
+                            newExpiration = expiration
+                        })
                         .flatMap { new, expiration in
-                            override = expiration
-                            return expirationCheck(
-                                Just((new, expiration))
-                                    .setFailureType(to: Failure.self)
-                                    .eraseToAnyPublisher()
-                            )
+                            Just(new)
+                                .setFailureType(to: Failure.self)
+                                .eraseToAnyPublisher()
                         }
+                        .replayingIndefinitely
                         .eraseToAnyPublisher()
+                    return newPublisher!
                 }
             }
             .eraseToAnyPublisher()
-        }
-
-        return expirationCheck(
-            publisher(from).replayingIndefinitely
-        )
     }
 }
 
