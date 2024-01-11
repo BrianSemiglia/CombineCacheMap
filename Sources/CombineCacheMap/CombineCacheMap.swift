@@ -149,12 +149,12 @@ extension Publisher where Output: Hashable {
      */
     public func cacheFlatMapUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
-        cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
+        // cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
         publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
     ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
         cachedReplayingUntilDateOf(
             when: condition,
-            cache: cache,
+            cache: .nsCache(),
             publisher: input
         )
         .flatMap { $0 }
