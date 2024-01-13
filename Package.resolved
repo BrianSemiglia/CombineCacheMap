@@ -2,12 +2,39 @@
   "object": {
     "pins": [
       {
+        "package": "combine-schedulers",
+        "repositoryURL": "https://github.com/pointfreeco/combine-schedulers",
+        "state": {
+          "branch": null,
+          "revision": "9dc9cbe4bc45c65164fa653a563d8d8db61b09bb",
+          "version": "1.0.0"
+        }
+      },
+      {
         "package": "CombineExt",
         "repositoryURL": "https://github.com/CombineCommunity/CombineExt",
         "state": {
           "branch": null,
           "revision": "d7b896fa9ca8b47fa7bcde6b43ef9b70bf8c1f56",
           "version": "1.8.1"
+        }
+      },
+      {
+        "package": "swift-concurrency-extras",
+        "repositoryURL": "https://github.com/pointfreeco/swift-concurrency-extras",
+        "state": {
+          "branch": null,
+          "revision": "bb5059bde9022d69ac516803f4f227d8ac967f71",
+          "version": "1.1.0"
+        }
+      },
+      {
+        "package": "xctest-dynamic-overlay",
+        "repositoryURL": "https://github.com/pointfreeco/xctest-dynamic-overlay",
+        "state": {
+          "branch": null,
+          "revision": "23cbf2294e350076ea4dbd7d5d047c1e76b03631",
+          "version": "1.0.2"
         }
       }
     ]

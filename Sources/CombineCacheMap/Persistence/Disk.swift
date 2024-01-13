@@ -3,9 +3,114 @@ import Combine
 import CombineExt
 import CryptoKit
 
+public struct Expiring<T>: Codable where T: Codable {
+    let value: T
+    let expiration: Date
+}
+
 extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
+
+    public static func diskCacheUntil<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<Expiring<V>, Error>> {
+        Persisting<K, AnyPublisher<Expiring<V>, Error>>(
+            backing: (
+                writes: TypedCache<String, AnyPublisher<Expiring<V>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Expiring<V>>]>(),
+                disk: directory.appendingPathExtension(id)
+            ),
+            set: { backing, value, key in
+
+                /*
+                 - publisher from disk
+                 1. if expired, remove
+                 2. else, replay until expired
+                 - publisher from memory
+                 1. replay until expired
+                 */
+
+                /*
+                 1. get publisher
+                 2. on expiration, re-run adding new write and new catch
+                 1. save publisher to writes
+                 2. write on run
+                 3. read on next get
+                 4. cache to memory
+                 5. on expiration re-run publisher
+                 6.
+                 */
+
+                backing.writes.setObject(
+                    value,
+                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                )
+            },
+            value: { backing, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                if let write = backing.writes.object(forKey: key) {
+                    // 1. Removal causes next access to trigger disk read.
+                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
+
+                    let shared = write.replayingIndefinitely.catchExpiration(publisher: write) { _ in
+                        print("expired - writes")
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk
+                        )
+                    }
+
+                    return Publishers.Merge(
+                        shared.eraseToAnyPublisher(),
+                        shared
+                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
+                            .setFailureType(to: Error.self)
+                            .flatMap { _ in Empty<Expiring<V>, Error>() } // publisher completes with nothing (void)
+                            .eraseToAnyPublisher()
+                    ).eraseToAnyPublisher()
+
+                } else if let memory = backing.memory.object(forKey: key) {
+                    // 3. Further gets come from memory
+                    print(Date())
+                    if memory.first?.isExpired() == true {
+                        print("expired - memory")
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk
+                        )
+                        return nil
+                    } else {
+                        print("expired not - memory")
+                        return Publishers.publisher(from: memory)
+                    }
+                } else if let data = try? Data(contentsOf: backing.disk.appendingPathComponent("\(key)")) {
+                    if let values = try? JSONDecoder().decode([WrappedEvent<Expiring<V>>].self, from: data) {
+                        // 2. Data is made an observable again but without the disk write side-effect
+                        if values.first?.isExpired() == true {
+                            print("expired - disk")
+                            return nil
+                        } else {
+                            print("expired not - disk")
+                            backing.memory.setObject(values, forKey: key)
+                            return Publishers.publisher(from: values)
+                        }
+                    } else {
+                        return nil
+                    }
+                } else {
+                    return nil
+                }
+            },
+            reset: { backing in
+                backing.writes.removeAllObjects()
+                backing.memory.removeAllObjects()
+                try? FileManager.default.removeItem(
+                    at: backing.disk
+                )
+            }
+        )
+    }
 
     public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
         Persisting<K, AnyPublisher<V, Error>>(
@@ -104,6 +209,21 @@ extension Persisting {
                 withKey: try! Persisting<K, V>.sha256Hash(for: key)
             )
             .sink { _ in }
+    }
+}
+
+extension WrappedEvent {
+    func isExpired<E>() -> Bool where T == Expiring<E> {
+        switch event {
+        case .value(let value):
+            if Date() > value.expiration {
+                return true
+            } else {
+                return false
+            }
+        default:
+            return false
+        }
     }
 }
 
@@ -207,7 +327,42 @@ private extension Publishers {
     }
 }
 
-private extension AnyPublisher {
+extension Publisher {
+    func catchExpiration<T>(
+        publisher: AnyPublisher<Expiring<T>, Error>,
+        onExpiration: @escaping (AnyPublisher<Expiring<T>, Error>) -> Void
+    ) -> AnyPublisher<Expiring<T>, Error> where Output == Expiring<T>, Failure == Error {
+        var newExpiration = Date(timeIntervalSince1970: 0)
+        var newPublisher: AnyPublisher<Expiring<T>, Failure>?
+
+        return flatMap { next in
+            newExpiration = newExpiration > next.expiration ? newExpiration : next.expiration
+            if Date() < newExpiration {
+                newPublisher = newPublisher ?? Just(next)
+                    .setFailureType(to: Failure.self)
+                    .eraseToAnyPublisher()
+                return newPublisher!
+            } else {
+                newPublisher = publisher
+                    .handleEvents(receiveOutput: { next in
+                        newExpiration = next.expiration
+                    })
+                    .flatMap { next in
+                        Just(next)
+                            .setFailureType(to: Failure.self)
+                            .eraseToAnyPublisher()
+                    }
+                    .replayingIndefinitely
+                    .eraseToAnyPublisher()
+                onExpiration(newPublisher!)
+                return newPublisher!
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+}
+
+private extension Publisher {
     func persistingOutputAsSideEffect<Key>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable {
         self
             .materialize()

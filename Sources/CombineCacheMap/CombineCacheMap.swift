@@ -149,12 +149,12 @@ extension Publisher where Output: Hashable {
      */
     public func cacheFlatMapUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
-        // cache: Persisting<Output, AnyPublisher<T, Failure>> = .nsCache(),
-        publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
-    ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .nsCache(),
+        publisher input: @escaping (Output) -> AnyPublisher<Expiring<T>, Failure>
+    ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<Expiring<T>, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<Expiring<T>, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
         cachedReplayingUntilDateOf(
             when: condition,
-            cache: .nsCache(),
+            cache: cache,
             publisher: input
         )
         .flatMap { $0 }
@@ -162,63 +162,38 @@ extension Publisher where Output: Hashable {
 
     private func cachedReplayingUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
-        cache: Persisting<Output, AnyPublisher<T, Failure>>,
-        publisher input: @escaping (Output) -> AnyPublisher<(T, Date), Failure>
-    ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>> {
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>>,
+        publisher input: @escaping (Output) -> AnyPublisher<Expiring<T>, Failure>
+    ) -> Publishers.CompactMap<
+        Publishers.Scan<
+            Self,
+            (cache: Persisting<Self.Output, AnyPublisher<Expiring<T>, Self.Failure>>,
+             key: Optional<Self.Output>,
+             value: Optional<AnyPublisher<Expiring<T>, Self.Failure>>)
+        >,
+        AnyPublisher<T, Self.Failure>
+    > {
         scan((
             cache: cache,
             key: Optional<Output>.none,
-            value: Optional<AnyPublisher<T, Failure>>.none
+            value: Optional<AnyPublisher<Expiring<T>, Failure>>.none
         )) {(
             cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
-                value: Self.replayingUntilDateOf(publisher: input, from: $1).eraseToAnyPublisher()
+                value: input($1).eraseToAnyPublisher()
             ),
             key: $1,
-            value: condition($1) ? nil : input($1).map { $0.0 }.eraseToAnyPublisher()
+            value: condition($1) ? nil : input($1).eraseToAnyPublisher()
         )}
-        .compactMap { (cache: Persisting<Output, AnyPublisher<T, Failure>>, key: Output?, value: AnyPublisher<T, Failure>?) in
-            value?.eraseToAnyPublisher() ??
-            key.flatMap { cache.value($0) }
+        .compactMap { (cache, key, value) in
+            let y = value?.map(\.value).eraseToAnyPublisher()
+            let z = key.flatMap { cache.value($0) }.flatMap { $0.map(\.value) }?.eraseToAnyPublisher()
+            return y ?? z
         }
-    }
-
-    private static func replayingUntilDateOf<T>(
-        publisher: @escaping (Output) -> AnyPublisher<(T, Date), Failure>,
-        from: Output
-    ) -> AnyPublisher<T, Failure> {
-        var newExpiration = Date(timeIntervalSince1970: 0)
-        var newPublisher: AnyPublisher<T, Failure>?
-
-        return publisher(from)
-            .replayingIndefinitely
-            .flatMap { new, expiration in
-                newExpiration = newExpiration > expiration ? newExpiration : expiration
-                if Date() < newExpiration {
-                    newPublisher = newPublisher ?? Just(new)
-                        .setFailureType(to: Failure.self)
-                        .eraseToAnyPublisher()
-                    return newPublisher!
-                } else {
-                    newPublisher = publisher(from)
-                        .handleEvents(receiveOutput: { new, expiration in
-                            newExpiration = expiration
-                        })
-                        .flatMap { new, expiration in
-                            Just(new)
-                                .setFailureType(to: Failure.self)
-                                .eraseToAnyPublisher()
-                        }
-                        .replayingIndefinitely
-                        .eraseToAnyPublisher()
-                    return newPublisher!
-                }
-            }
-            .eraseToAnyPublisher()
     }
 }
 
-private extension Publisher {
+extension Publisher {
     var replayingIndefinitely: AnyPublisher<Output, Failure> {
         self
             .multicast(subject: UnboundReplaySubject())
