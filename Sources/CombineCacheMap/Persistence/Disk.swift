@@ -12,7 +12,8 @@ extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
-    public static func diskCacheUntil<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<Expiring<V>, Error>> {
+    // For FlatMap refreshing after
+    public static func diskRefreshingAfter<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<Expiring<V>, Error>> {
         Persisting<K, AnyPublisher<Expiring<V>, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<Expiring<V>, Error>>(),
@@ -91,7 +92,8 @@ extension Persisting {
         )
     }
 
-    public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
+    // For FlatMap
+    public static func disk<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
         Persisting<K, AnyPublisher<V, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<V, Error>>(),
@@ -140,7 +142,8 @@ extension Persisting {
         )
     }
 
-    public static func diskCache<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
+    // For Map
+    public static func disk<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
         Persisting<K, V>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
@@ -154,8 +157,7 @@ extension Persisting {
             },
             value: { folder, key in
                 (try? Persisting.sha256Hash(for: key))
-                    .flatMap { key in try? Data(contentsOf: folder.appendingPathComponent("\(key)")) }
-                    .flatMap { data in try? JSONDecoder().decode(V.self, from: data) }
+                    .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: V.self) }
             },
             reset: { url in
                 try? FileManager.default.removeItem(
@@ -214,7 +216,7 @@ extension WrappedEvent {
 }
 
 struct TypedCache<Key, Value> {
-    private let storage: NSCache<AnyObject, AnyObject> = .init()
+    private let storage = NSCache<AnyObject, AnyObject>()
     func object(forKey key: Key) -> Value? {
         storage.object(forKey: key as AnyObject) as? Value
     }

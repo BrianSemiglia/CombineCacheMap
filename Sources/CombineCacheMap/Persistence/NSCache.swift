@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 extension Persisting {
-    public static func nsCache<K, V>() -> Persisting<K, V> {
+    public static func memory<K, V>() -> Persisting<K, V> {
         Persisting<K, V>(
             backing:TypedCache<K, V>(),
             set: { cache, value, key in
@@ -20,7 +20,7 @@ extension Persisting {
         )
     }
 
-    public static func nsCacheExpiring<K, V, E: Error>() -> Persisting<K, AnyPublisher<Expiring<V>, E>> {
+    public static func memoryRefreshingAfter<K, V, E: Error>() -> Persisting<K, AnyPublisher<Expiring<V>, E>> {
         return Persisting<K, AnyPublisher<Expiring<V>, E>>(
             backing: TypedCache<K, AnyPublisher<Expiring<V>, E>>(),
             set: { cache, value, key in
