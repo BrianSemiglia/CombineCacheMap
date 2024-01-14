@@ -149,7 +149,7 @@ extension Publisher where Output: Hashable {
      */
     public func cacheFlatMapUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
-        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .nsCache(),
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .nsCacheExpiring(),
         publisher input: @escaping (Output) -> AnyPublisher<Expiring<T>, Failure>
     ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<Expiring<T>, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<Expiring<T>, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
         cachedReplayingUntilDateOf(
@@ -162,7 +162,7 @@ extension Publisher where Output: Hashable {
 
     private func cachedReplayingUntilDateOf<T>(
         when condition: @escaping (Output) -> Bool = { _ in true },
-        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>>,
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .nsCacheExpiring(),
         publisher input: @escaping (Output) -> AnyPublisher<Expiring<T>, Failure>
     ) -> Publishers.CompactMap<
         Publishers.Scan<

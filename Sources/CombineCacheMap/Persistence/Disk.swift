@@ -20,26 +20,6 @@ extension Persisting {
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
-
-                /*
-                 - publisher from disk
-                 1. if expired, remove
-                 2. else, replay until expired
-                 - publisher from memory
-                 1. replay until expired
-                 */
-
-                /*
-                 1. get publisher
-                 2. on expiration, re-run adding new write and new catch
-                 1. save publisher to writes
-                 2. write on run
-                 3. read on next get
-                 4. cache to memory
-                 5. on expiration re-run publisher
-                 6.
-                 */
-
                 backing.writes.setObject(
                     value,
                     forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
@@ -48,15 +28,15 @@ extension Persisting {
             value: { backing, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 if let write = backing.writes.object(forKey: key) {
-                    // 1. Removal causes next access to trigger disk read.
+                    // 1. Publisher needs to execute once to capture values. Removal afterwards causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
 
-                    let shared = write.replayingIndefinitely.catchExpiration(publisher: write) { _ in
+                    let shared = write.replayingIndefinitely.refreshingOnExpiration(with: write) { _ in
                         print("expired - writes")
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
-                            at: backing.disk
+                            at: backing.disk.appendingPathExtension("\(key)")
                         )
                     }
 
@@ -68,35 +48,34 @@ extension Persisting {
                             .flatMap { _ in Empty<Expiring<V>, Error>() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
-
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    print(Date())
                     if memory.first?.isExpired() == true {
                         print("expired - memory")
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
-                            at: backing.disk
+                            at: backing.disk.appendingPathExtension("\(key)")
                         )
                         return nil
                     } else {
                         print("expired not - memory")
                         return Publishers.publisher(from: memory)
                     }
-                } else if let data = try? Data(contentsOf: backing.disk.appendingPathComponent("\(key)")) {
-                    if let values = try? JSONDecoder().decode([WrappedEvent<Expiring<V>>].self, from: data) {
-                        // 2. Data is made an observable again but without the disk write side-effect
-                        if values.first?.isExpired() == true {
-                            print("expired - disk")
-                            return nil
-                        } else {
-                            print("expired not - disk")
-                            backing.memory.setObject(values, forKey: key)
-                            return Publishers.publisher(from: values)
-                        }
-                    } else {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<V>>].self) {
+                    // 2. Data is made an observable again but without the disk write side-effect
+                    if values.first?.isExpired() == true {
+                        print("expired - disk")
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk.appendingPathExtension("\(key)")
+                        )
                         return nil
+                    } else {
+                        print("expired not - disk")
+                        backing.memory.setObject(values, forKey: key)
+                        return Publishers.publisher(from: values)
                     }
                 } else {
                     return nil
@@ -120,21 +99,9 @@ extension Persisting {
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
-                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                let shared = value
-                    .multicast(subject: UnboundReplaySubject<V, Error>())
-                    .autoconnect()
                 backing.writes.setObject(
-                    Publishers.Merge(
-                        shared.eraseToAnyPublisher(),
-                        shared
-                            .eraseToAnyPublisher()
-                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
-                            .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<V, Error>() } // publisher completes with nothing (void)
-                            .eraseToAnyPublisher()
-                    ).eraseToAnyPublisher(),
-                    forKey: key
+                    value,
+                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 )
             },
             value: { backing, key in
@@ -142,20 +109,24 @@ extension Persisting {
                 if let write = backing.writes.object(forKey: key) {
                     // 1. This observable has disk write side-effect. Removal from in-memory cache causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
-                    return write
+                    let shared = write.replayingIndefinitely
+                    return Publishers.Merge(
+                        shared.eraseToAnyPublisher(),
+                        shared
+                            .eraseToAnyPublisher()
+                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
+                            .setFailureType(to: Error.self)
+                            .flatMap { _ in Empty<V, Error>() } // publisher completes with no output
+                            .eraseToAnyPublisher()
+                    ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
-                    // 4. Further gets come from memory
+                    // 3. Further gets come from memory
                     return memory
-                } else if let data = try? Data(contentsOf: backing.disk.appendingPathComponent("\(key)")) {
-                    // 2. Data is read back in ☝️
-                    if let values = try? JSONDecoder().decode([WrappedEvent<V>].self, from: data) {
-                        // 3. Data is made an observable again but without the disk write side-effect
-                        let o = Publishers.publisher(from: values)
-                        backing.memory.setObject(o, forKey: key)
-                        return o
-                    } else {
-                        return nil
-                    }
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<V>].self) {
+                    // 2. Data is made an observable again but without the disk write side-effect
+                    let o = Publishers.publisher(from: values)
+                    backing.memory.setObject(o, forKey: key)
+                    return o
                 } else {
                     return nil
                 }
@@ -212,6 +183,21 @@ extension Persisting {
     }
 }
 
+extension URL {
+    func contents<T>(as: T.Type) -> T? where T: Decodable {
+        if let data = try? Data(contentsOf: self) {
+            // 2. Data is read back in ☝️
+            if let contents = try? JSONDecoder().decode(T.self, from: data) {
+                return contents
+            } else {
+                return nil
+            }
+        } else {
+            return nil
+        }
+    }
+}
+
 extension WrappedEvent {
     func isExpired<E>() -> Bool where T == Expiring<E> {
         switch event {
@@ -227,7 +213,7 @@ extension WrappedEvent {
     }
 }
 
-private struct TypedCache<Key, Value> {
+struct TypedCache<Key, Value> {
     private let storage: NSCache<AnyObject, AnyObject> = .init()
     func object(forKey key: Key) -> Value? {
         storage.object(forKey: key as AnyObject) as? Value
@@ -328,10 +314,10 @@ private extension Publishers {
 }
 
 extension Publisher {
-    func catchExpiration<T>(
-        publisher: AnyPublisher<Expiring<T>, Error>,
-        onExpiration: @escaping (AnyPublisher<Expiring<T>, Error>) -> Void
-    ) -> AnyPublisher<Expiring<T>, Error> where Output == Expiring<T>, Failure == Error {
+    func refreshingOnExpiration<T, E: Error>(
+        with refresher: AnyPublisher<Expiring<T>, E>,
+        onExpiration: @escaping (AnyPublisher<Expiring<T>, E>) -> Void = { _ in }
+    ) -> AnyPublisher<Expiring<T>, E> where Output == Expiring<T>, Failure == E {
         var newExpiration = Date(timeIntervalSince1970: 0)
         var newPublisher: AnyPublisher<Expiring<T>, Failure>?
 
@@ -343,7 +329,7 @@ extension Publisher {
                     .eraseToAnyPublisher()
                 return newPublisher!
             } else {
-                newPublisher = publisher
+                newPublisher = refresher
                     .handleEvents(receiveOutput: { next in
                         newExpiration = next.expiration
                     })
