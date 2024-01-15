@@ -292,7 +292,6 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .setFailureType(to: Error.self)
             .delay(for: .seconds(2), scheduler: testScheduler)
             .eraseToAnyPublisher()
         }
@@ -303,13 +302,13 @@ final class CombineCacheMapTests: XCTestCase {
         })
         .store(in: &cancellables)
 
-        Array(0..<25).map(Double.init).forEach { x in
+        Array(0..<15).map(Double.init).forEach { x in
             DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
                 testScheduler.advance(by: .seconds(1))
             }
         }
 
-        wait(for: [expectation], timeout: 26)
+        wait(for: [expectation], timeout: 14)
 
         XCTAssertEqual(receivedValues.count, 4)
         XCTAssertEqual(receivedValues, [3, 3, 5, 5])
@@ -346,7 +345,6 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .setFailureType(to: Error.self)
             .delay(for: .seconds(2), scheduler: testScheduler)
             .eraseToAnyPublisher()
         }
@@ -357,13 +355,13 @@ final class CombineCacheMapTests: XCTestCase {
         })
         .store(in: &cancellables)
 
-        Array(0..<25).map(Double.init).forEach { x in
+        Array(0..<15).map(Double.init).forEach { x in
             DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
                 testScheduler.advance(by: .seconds(1))
             }
         }
 
-        wait(for: [expectation], timeout: 26)
+        wait(for: [expectation], timeout: 14)
 
         XCTAssertEqual(receivedValues.count, 4)
         XCTAssertEqual(receivedValues, [3, 3, 5, 5])
@@ -452,7 +450,6 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .setFailureType(to: Error.self)
             .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
@@ -501,7 +498,6 @@ final class CombineCacheMapTests: XCTestCase {
         })
         .cacheFlatMap(cache: .diskRefreshingAfter()) { x in
             AnyPublisher.create {
-                print("cache miss!")
                 cacheMisses += 1
                 $0.send(
                     Expiring(
@@ -512,7 +508,6 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .setFailureType(to: Error.self)
             .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
