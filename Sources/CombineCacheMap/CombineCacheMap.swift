@@ -124,7 +124,7 @@ extension Publisher where Output: Hashable {
         )) {(
             cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
-                value: input($1).replayingIndefinitely
+                value: input($1)
             ),
             key: $1,
             value: condition($1) ? nil : input($1)
