@@ -35,11 +35,11 @@ extension Persisting {
             value: { backing, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 if let write = backing.writes.object(forKey: key) {
-                    // 1. Publisher needs to execute once to capture values. Removal afterwards causes next access to trigger disk read.
+                    // 1. Publisher needs to execute once to capture values.
+                    //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
 
                     let shared = write.replayingIndefinitely.refreshingOnExpiration(with: write) { _ in
-                        print("expired - writes")
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -58,7 +58,6 @@ extension Persisting {
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
                     if memory.first?.isExpired() == true {
-                        print("expired - memory")
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -66,13 +65,11 @@ extension Persisting {
                         )
                         return nil
                     } else {
-                        print("expired not - memory")
                         return Publishers.publisher(from: memory)
                     }
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<V>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.first?.isExpired() == true {
-                        print("expired - disk")
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -80,7 +77,6 @@ extension Persisting {
                         )
                         return nil
                     } else {
-                        print("expired not - disk")
                         backing.memory.setObject(values, forKey: key)
                         return Publishers.publisher(from: values)
                     }
@@ -115,7 +111,8 @@ extension Persisting {
             value: { backing, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 if let write = backing.writes.object(forKey: key) {
-                    // 1. This observable has disk write side-effect. Removal from in-memory cache causes next access to trigger disk read.
+                    // 1. Publisher needs to execute once to capture values.
+                    //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
                     let shared = write.replayingIndefinitely
                     return Publishers.Merge(
