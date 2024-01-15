@@ -96,15 +96,6 @@ extension Publisher where Output: Hashable {
     }
 
     /**
-     Cancels previous Publisher and flatmaps provided Publisher. Exists as a convenience when toggling between `cacheFlatMapLatest` and `flatMapLatest`.
-     */
-    private func flatMapLatest<T>(
-        publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
-    ) -> Publishers.SwitchToLatest<AnyPublisher<T, Self.Failure>, Publishers.Map<Self, AnyPublisher<T, Self.Failure>>> {
-        map(input).switchToLatest()
-    }
-
-    /**
      Caches completed publishers and replays their events when latest incoming value equals a previous else produces new events.
      Cancels playback of previous publishers.
      */
