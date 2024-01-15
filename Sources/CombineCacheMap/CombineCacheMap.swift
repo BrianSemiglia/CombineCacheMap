@@ -47,7 +47,7 @@ extension Publisher where Output: Hashable {
                 }
             }
         }
-        .compactMap { (cache: Persisting<Output, T>, key: Output?, value: T?) in
+        .compactMap { (cache, key, value) in
             value ??
             key.flatMap { cache.value($0) }
         }
@@ -73,7 +73,7 @@ extension Publisher where Output: Hashable {
             key: $1,
             value: condition($1) ? nil : transform($1)
         )}
-        .compactMap { (cache: Persisting<Output, T>, key: Output?, value: T?) in
+        .compactMap { (cache, key, value) in
             value ??
             key.flatMap { cache.value($0) }
         }
@@ -129,7 +129,7 @@ extension Publisher where Output: Hashable {
             key: $1,
             value: condition($1) ? nil : input($1)
         )}
-        .compactMap { (cache: Persisting<Output, AnyPublisher<T, Failure>>, key: Output?, value: AnyPublisher<T, Failure>?) in
+        .compactMap { (cache, key, value) in
             value ??
             key.flatMap { cache.value($0) }
         }
