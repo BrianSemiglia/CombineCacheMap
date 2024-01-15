@@ -265,6 +265,58 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
+    func testCacheFlatMapLatestExpiring_InMemory() {
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            Publishers.MergeMany(
+                Just(2).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled
+                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+                Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
+            )
+            .cacheFlatMapLatest(cache: .memoryRefreshingAfter()) { x in
+                AnyPublisher.create {
+                    cacheMisses += 1
+                    $0.send(Expiring(value: x, expiration: Date() - 1))
+                    $0.send(completion: .finished)
+                    return AnyCancellable {}
+                }
+                .delay(for: .seconds(2), scheduler: RunLoop.main)
+                .eraseToAnyPublisher()
+            }
+            .toBlocking(timeout: 7),
+            [1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 2)
+    }
+
+    func testCacheFlatMapLatestExpiring_Disk() {
+        let cache: Persisting<Int, Int> = Persisting<Int, Int>.disk()
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            Publishers.MergeMany(
+                Just(2).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled
+                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+                Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
+            )
+            .setFailureType(to: Error.self)
+            .cacheFlatMapLatest(cache: .diskRefreshingAfter()) { x in
+                AnyPublisher.create {
+                    cacheMisses += 1
+                    $0.send(Expiring(value: x, expiration: Date() - 1))
+                    $0.send(completion: .finished)
+                    return AnyCancellable {}
+                }
+                .delay(for: .seconds(2), scheduler: RunLoop.main)
+                .eraseToAnyPublisher()
+            }
+            .toBlocking(timeout: 7),
+            [1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 2)
+    }
+
     func testCacheFlatMapInvalidatingOnNever_InMemory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(

@@ -3,9 +3,15 @@ import Combine
 import CombineExt
 import CryptoKit
 
-public struct Expiring<T>: Codable where T: Codable {
-    let value: T
-    let expiration: Date
+public protocol ExpiringValue {
+    associatedtype Value
+    var value: Value { get }
+    var expiration: Date { get }
+}
+
+public struct Expiring<T>: Codable, ExpiringValue where T: Codable {
+    public let value: T
+    public let expiration: Date
 }
 
 extension Persisting {
@@ -13,11 +19,11 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func diskRefreshingAfter<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<Expiring<V>, Error>> {
-        Persisting<K, AnyPublisher<Expiring<V>, Error>>(
+    public static func diskRefreshingAfter<K, V>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> where K: Codable, V: Codable, V: ExpiringValue {
+        Persisting<K, AnyPublisher<V, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Expiring<V>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Expiring<V>>]>(),
+                writes: TypedCache<String, AnyPublisher<V, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<V>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -46,7 +52,7 @@ extension Persisting {
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<Expiring<V>, Error>() } // publisher completes with nothing (void)
+                            .flatMap { _ in Empty<V, Error>() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
@@ -63,7 +69,7 @@ extension Persisting {
                         print("expired not - memory")
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<V>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<V>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.first?.isExpired() == true {
                         print("expired - disk")
@@ -201,7 +207,7 @@ extension URL {
 }
 
 extension WrappedEvent {
-    func isExpired<E>() -> Bool where T == Expiring<E> {
+    func isExpired() -> Bool where T: ExpiringValue {
         switch event {
         case .value(let value):
             if Date() > value.expiration {
@@ -316,12 +322,12 @@ private extension Publishers {
 }
 
 extension Publisher {
-    func refreshingOnExpiration<T, E: Error>(
-        with refresher: AnyPublisher<Expiring<T>, E>,
-        onExpiration: @escaping (AnyPublisher<Expiring<T>, E>) -> Void = { _ in }
-    ) -> AnyPublisher<Expiring<T>, E> where Output == Expiring<T>, Failure == E {
+    func refreshingOnExpiration<T: ExpiringValue, E: Error>(
+        with refresher: AnyPublisher<T, E>,
+        onExpiration: @escaping (AnyPublisher<T, E>) -> Void = { _ in }
+    ) -> AnyPublisher<T, E> where Output == T, Failure == E {
         var newExpiration = Date(timeIntervalSince1970: 0)
-        var newPublisher: AnyPublisher<Expiring<T>, Failure>?
+        var newPublisher: AnyPublisher<T, Failure>?
 
         return flatMap { next in
             newExpiration = newExpiration > next.expiration ? newExpiration : next.expiration

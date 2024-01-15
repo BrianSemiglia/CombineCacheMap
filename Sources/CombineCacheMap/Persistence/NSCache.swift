@@ -20,9 +20,9 @@ extension Persisting {
         )
     }
 
-    public static func memoryRefreshingAfter<K, V, E: Error>() -> Persisting<K, AnyPublisher<Expiring<V>, E>> {
-        return Persisting<K, AnyPublisher<Expiring<V>, E>>(
-            backing: TypedCache<K, AnyPublisher<Expiring<V>, E>>(),
+    public static func memoryRefreshingAfter<K, V: ExpiringValue, E: Error>() -> Persisting<K, AnyPublisher<V, E>> {
+        Persisting<K, AnyPublisher<V, E>>(
+            backing: TypedCache<K, AnyPublisher<V, E>>(),
             set: { cache, value, key in
                 cache.setObject(
                     value.replayingIndefinitely.refreshingOnExpiration(with: value),
