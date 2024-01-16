@@ -95,7 +95,7 @@ extension Persisting {
     }
 
     // For FlatMap
-    public static func disk<K: Codable, O: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> {
+    public static func disk<K: Codable, O: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where Value == AnyPublisher<O, Error> {
         Persisting<K, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
