@@ -19,11 +19,11 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func diskRefreshingAfter<K, V>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> where K: Codable, V: Codable, V: ExpiringValue {
-        Persisting<K, AnyPublisher<V, Error>>(
+    public static func diskRefreshingAfter<K, O>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where K: Codable, O: Codable, O: ExpiringValue {
+        Persisting<K, AnyPublisher<O, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<V, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<V>]>(),
+                writes: TypedCache<String, AnyPublisher<O, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<O>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -52,7 +52,7 @@ extension Persisting {
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<V, Error>() } // publisher completes with nothing (void)
+                            .flatMap { _ in Empty<O, Error>() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
@@ -67,7 +67,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<V>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.first?.isExpired() == true {
                         backing.writes.removeObject(forKey: key)
@@ -95,11 +95,11 @@ extension Persisting {
     }
 
     // For FlatMap
-    public static func disk<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<V, Error>> {
-        Persisting<K, AnyPublisher<V, Error>>(
+    public static func disk<K: Codable, O: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> {
+        Persisting<K, AnyPublisher<O, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<V, Error>>(),
-                memory: TypedCache<String, AnyPublisher<V, Error>>(),
+                writes: TypedCache<String, AnyPublisher<O, Error>>(),
+                memory: TypedCache<String, AnyPublisher<O, Error>>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -121,13 +121,13 @@ extension Persisting {
                             .eraseToAnyPublisher()
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<V, Error>() } // publisher completes with no output
+                            .flatMap { _ in Empty<O, Error>() } // publisher completes with no output
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
                     return memory
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<V>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     let o = Publishers.publisher(from: values)
                     backing.memory.setObject(o, forKey: key)
@@ -191,7 +191,6 @@ extension Persisting {
 extension URL {
     func contents<T>(as: T.Type) -> T? where T: Decodable {
         if let data = try? Data(contentsOf: self) {
-            // 2. Data is read back in ☝️
             if let contents = try? JSONDecoder().decode(T.self, from: data) {
                 return contents
             } else {
@@ -319,12 +318,12 @@ private extension Publishers {
 }
 
 extension Publisher {
-    func refreshingOnExpiration<T: ExpiringValue, E: Error>(
-        with refresher: AnyPublisher<T, E>,
-        onExpiration: @escaping (AnyPublisher<T, E>) -> Void = { _ in }
-    ) -> AnyPublisher<T, E> where Output == T, Failure == E {
+    func refreshingOnExpiration<O: ExpiringValue, E: Error>(
+        with refresher: AnyPublisher<O, E>,
+        onExpiration: @escaping (AnyPublisher<O, E>) -> Void = { _ in }
+    ) -> AnyPublisher<O, E> where Output == O, Failure == E {
         var newExpiration = Date(timeIntervalSince1970: 0)
-        var newPublisher: AnyPublisher<T, Failure>?
+        var newPublisher: AnyPublisher<O, Failure>?
 
         return flatMap { next in
             newExpiration = newExpiration > next.expiration ? newExpiration : next.expiration
