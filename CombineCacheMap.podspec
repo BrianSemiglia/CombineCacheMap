@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'CombineCacheMap'
-  s.version          = '0.3.0'
+  s.version          = '0.3.1'
   s.summary          = 'A collection of caching Combine operators.'
   s.description      = 'Cache/memoize the output of Combine.Publishers using cacheMap, cacheFlatMap and more.'
   s.homepage         = 'https://github.com/briansemiglia/combinecachemap'
