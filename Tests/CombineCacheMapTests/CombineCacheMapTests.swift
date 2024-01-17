@@ -807,36 +807,124 @@ final class CombineCacheMapTests: XCTestCase {
         cache.reset()
     }
 
-    func testErrorReplay_Disk() {
-
+    func testShouldIgnoreCachedErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, Int> = .disk()
+        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory()
         cache.persistToDisk(
             key: 1,
             item: AnyPublisher<Int, Foo>.create {
-                $0.send(1)
-                $0.send(1)
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
         )
 
         var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 1, 1]
+        XCTAssertEqual(
+            try? [1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: cache) { _ in
+                    cacheMisses += 1
+                    return Empty().eraseToAnyPublisher()
+                }
+                .toBlocking(),
+            [] as [Int] // nil means error was received, [] means it was not
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testShouldIgnoreCachedErrors_Disk() {
+        struct Foo: Error {}
+
+        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .disk()
+        cache.persistToDisk(
+            key: 1,
+            item: AnyPublisher<Int, Foo>.create {
+                $0.send(completion: .failure(Foo()))
+                return AnyCancellable {}
+            }
+        )
+
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1]
                 .publisher
                 .setFailureType(to: Error.self)
                 .cacheFlatMap(cache: .disk()) { _ in
                     cacheMisses += 1
-                    return Empty().eraseToAnyPublisher() // Closure shouldn't execute as it should be cached
+                    return Empty().eraseToAnyPublisher()
                 }
-                .replaceError(with: 99)
                 .toBlocking(),
-            [1, 1, 99]
+            [] as [Int] // nil means error was received, [] means it was not
         )
-        XCTAssertEqual(cacheMisses, 0)
+        XCTAssertEqual(cacheMisses, 1)
+    }
 
+    func testShouldNotCacheErrors_Memory() {
+        struct Foo: Error {}
+
+        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory()
+
+        // 1. Attempt to persist error
+        XCTAssertEqual(
+            try? [1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: cache) { _ in
+                    Fail(error: Foo()).eraseToAnyPublisher()
+                }
+                .toBlocking(),
+            Optional<[Int]>.none // nil means error was received, [] means it was not
+        )
+
+        // 2. Verify absence
+        var cacheMisses = 0
+        XCTAssertEqual(
+            try? [1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: cache) { _ in
+                    cacheMisses += 1
+                    return Empty().eraseToAnyPublisher()
+                }
+                .toBlocking(),
+            [] as [Int] // nil means error was received, [] means it was not
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testShouldNotCacheErrors_Disk() {
+        struct Foo: Error {}
+
+        let cache: Persisting<Int, Int> = .disk()
         cache.reset()
+
+        // 1. Attempt to persist error
+        XCTAssertEqual(
+            try? [1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .disk()) { _ in
+                    Fail(error: Foo()).eraseToAnyPublisher()
+                }
+                .toBlocking(),
+            Optional<[Int]>.none // nil means error was replayed, [] means it was not
+        )
+
+        // 2. Verify absence
+        var cacheMisses = 0
+        XCTAssertEqual(
+            try? [1]
+                .publisher
+                .setFailureType(to: Error.self)
+                .cacheFlatMap(cache: .disk()) { _ in
+                    cacheMisses += 1
+                    return Empty().eraseToAnyPublisher()
+                }
+                .toBlocking(),
+            [] as [Int] // nil means error was received, [] means it was not
+        )
+        XCTAssertEqual(cacheMisses, 1)
     }
 }

@@ -39,25 +39,34 @@ extension Persisting {
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
 
-                    let shared = write.replayingIndefinitely.refreshingOnExpiration(with: write) { _ in
-                        backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
-                    }
+                    let shared = write
+                        .replayingIndefinitely
+                        .onError {
+                            backing.writes.removeObject(forKey: key)
+                            backing.memory.removeObject(forKey: key)
+                            try? FileManager.default.removeItem(
+                                at: backing.disk.appendingPathExtension("\(key)")
+                            )
+                        }
+                        .refreshingOnExpiration(with: write) { _ in
+                            backing.writes.removeObject(forKey: key)
+                            backing.memory.removeObject(forKey: key)
+                            try? FileManager.default.removeItem(
+                                at: backing.disk.appendingPathExtension("\(key)")
+                            )
+                        }
 
                     return Publishers.Merge(
                         shared.eraseToAnyPublisher(),
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<O, Error>() } // publisher completes with nothing (void)
+                            .flatMap { _ in Empty() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.first?.isExpired() == true {
+                    if memory.isExpired() {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -69,7 +78,7 @@ extension Persisting {
                     }
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
-                    if values.first?.isExpired() == true {
+                    if values.isExpired() || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -95,7 +104,7 @@ extension Persisting {
     }
 
     // For FlatMap
-    public static func disk<K: Codable, O: Codable>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where Value == AnyPublisher<O, Error> {
+    public static func disk<K: Codable, O: Codable, E: Error>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where Value == AnyPublisher<O, E> {
         Persisting<K, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
@@ -114,14 +123,22 @@ extension Persisting {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
-                    let shared = write.replayingIndefinitely
+                    let shared = write
+                        .replayingIndefinitely
+                        .onError {
+                            backing.writes.removeObject(forKey: key)
+                            backing.memory.removeObject(forKey: key)
+                            try? FileManager.default.removeItem(
+                                at: backing.disk.appendingPathExtension("\(key)")
+                            )
+                        }
                     return Publishers.Merge(
                         shared.eraseToAnyPublisher(),
                         shared
                             .eraseToAnyPublisher()
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty<O, Error>() } // publisher completes with no output
+                            .flatMap { _ in Empty() } // publisher completes with no output
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
@@ -129,9 +146,18 @@ extension Persisting {
                     return memory
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
-                    let o = Publishers.publisher(from: values)
-                    backing.memory.setObject(o, forKey: key)
-                    return o
+                    if values.didFinishWithError() {
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk.appendingPathExtension("\(key)")
+                        )
+                        return nil
+                    } else {
+                        let o = Publishers.publisher(from: values)
+                        backing.memory.setObject(o, forKey: key)
+                        return o
+                    }
                 } else {
                     return nil
                 }
@@ -202,9 +228,9 @@ extension URL {
     }
 }
 
-extension WrappedEvent {
-    func isExpired() -> Bool where T: ExpiringValue {
-        switch event {
+private extension Collection {
+    func isExpired<T>() -> Bool where Element == WrappedEvent<T>, T: ExpiringValue {
+        switch first?.event {
         case .value(let value):
             if Date() > value.expiration {
                 return true
@@ -213,6 +239,17 @@ extension WrappedEvent {
             }
         default:
             return false
+        }
+    }
+}
+
+private extension Collection {
+    func didFinishWithError<T>() -> Bool where Element == WrappedEvent<T> {
+        contains {
+            switch $0.event {
+            case .failure: return true
+            default: return false
+            }
         }
     }
 }
@@ -342,12 +379,24 @@ extension Publisher {
                             .setFailureType(to: Failure.self)
                             .eraseToAnyPublisher()
                     }
-                    .replayingIndefinitely
+                    .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
                     .eraseToAnyPublisher()
                 onExpiration(newPublisher!)
                 return newPublisher!
             }
         }
+        .eraseToAnyPublisher()
+    }
+
+    func onError<O, E: Error>(
+        handler: @escaping () -> Void
+    ) -> AnyPublisher<O, E> where Output == O, Failure == E {
+        handleEvents(receiveCompletion: { next in
+            switch next {
+            case .failure: handler()
+            default: break
+            }
+        })
         .eraseToAnyPublisher()
     }
 }

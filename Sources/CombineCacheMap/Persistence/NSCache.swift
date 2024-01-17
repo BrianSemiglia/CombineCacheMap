@@ -25,7 +25,9 @@ extension Persisting {
             backing:TypedCache<K, AnyPublisher<O, E>>(),
             set: { cache, value, key in
                 cache.setObject(
-                    value.replayingIndefinitely,
+                    value
+                        .onError { cache.removeObject(forKey: key) }
+                        .replayingIndefinitely,
                     forKey: key
                 )
             },
@@ -43,7 +45,9 @@ extension Persisting {
             backing: TypedCache<K, AnyPublisher<O, E>>(),
             set: { cache, value, key in
                 cache.setObject(
-                    value.replayingIndefinitely.refreshingOnExpiration(with: value),
+                    value.replayingIndefinitely
+                        .onError { cache.removeObject(forKey: key) }
+                        .refreshingOnExpiration(with: value),
                     forKey: key
                 )
             },
