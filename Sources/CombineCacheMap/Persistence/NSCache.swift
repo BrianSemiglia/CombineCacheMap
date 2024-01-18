@@ -20,9 +20,9 @@ extension Persisting {
         )
     }
 
-    public static func memory<K, O, E: Error>() -> Persisting<K, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
-        Persisting<K, AnyPublisher<O, E>>(
-            backing:TypedCache<K, AnyPublisher<O, E>>(),
+    public static func memory<O, E: Error>() -> Persisting<Key, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
+        Persisting<Key, AnyPublisher<O, E>>(
+            backing:TypedCache<Key, AnyPublisher<O, E>>(),
             set: { cache, value, key in
                 cache.setObject(
                     value
@@ -40,9 +40,9 @@ extension Persisting {
         )
     }
 
-    public static func memoryRefreshingAfter<K, O: ExpiringValue, E: Error>() -> Persisting<K, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
-        Persisting<K, AnyPublisher<O, E>>(
-            backing: TypedCache<K, AnyPublisher<O, E>>(),
+    public static func memoryRefreshingAfter<O: ExpiringValue, E: Error>() -> Persisting<Key, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
+        Persisting<Key, AnyPublisher<O, E>>(
+            backing: TypedCache<Key, AnyPublisher<O, E>>(),
             set: { cache, value, key in
                 cache.setObject(
                     value.replayingIndefinitely

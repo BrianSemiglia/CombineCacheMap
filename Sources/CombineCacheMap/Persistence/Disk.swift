@@ -19,8 +19,8 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func diskRefreshingAfter<K, O>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where K: Codable, O: Codable, O: ExpiringValue {
-        Persisting<K, AnyPublisher<O, Error>>(
+    public static func diskRefreshingAfter<O, E: Error>(id: String = "default") -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
+        Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
                 memory: TypedCache<String, [WrappedEvent<O>]>(),
@@ -104,8 +104,8 @@ extension Persisting {
     }
 
     // For FlatMap
-    public static func disk<K: Codable, O: Codable, E: Error>(id: String = "default") -> Persisting<K, AnyPublisher<O, Error>> where Value == AnyPublisher<O, E> {
-        Persisting<K, AnyPublisher<O, Error>>(
+    public static func disk<O: Codable, E: Error>(id: String = "default") -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, Value == AnyPublisher<O, E> {
+        Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
                 memory: TypedCache<String, AnyPublisher<O, Error>>(),
@@ -172,8 +172,8 @@ extension Persisting {
     }
 
     // For Map
-    public static func disk<K: Codable, V: Codable>(id: String = "default") -> Persisting<K, V> {
-        Persisting<K, V>(
+    public static func disk(id: String = "default") -> Persisting<Key, Value> where Key: Codable, Value: Codable {
+        Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
                 let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
@@ -186,7 +186,7 @@ extension Persisting {
             },
             value: { folder, key in
                 (try? Persisting.sha256Hash(for: key))
-                    .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: V.self) }
+                    .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
             },
             reset: { url in
                 try? FileManager.default.removeItem(
@@ -329,7 +329,7 @@ private struct WrappedEvent<T: Codable>: Codable {
 }
 
 private extension Publishers {
-    static func publisher<T>(from wrappedEvents: [WrappedEvent<T>]) -> AnyPublisher<T, Error> {
+    static func publisher<O>(from wrappedEvents: [WrappedEvent<O>]) -> AnyPublisher<O, Error> {
         wrappedEvents
             .publisher
             .setFailureType(to: Error.self)
@@ -355,12 +355,12 @@ private extension Publishers {
 }
 
 extension Publisher {
-    func refreshingWhenExpired<O: ExpiringValue, E: Error>(
-        with refresher: AnyPublisher<O, E>,
+    func refreshingWhenExpired(
+        with refresher: AnyPublisher<Output, Failure>,
         didExpire: @escaping () -> Void = {}
-    ) -> AnyPublisher<O, E> where Output == O, Failure == E {
+    ) -> AnyPublisher<Output, Failure> where Output: ExpiringValue, Failure == Failure {
         var newExpiration = Date(timeIntervalSince1970: 0)
-        var newPublisher: AnyPublisher<O, Failure>?
+        var newPublisher: AnyPublisher<Output, Failure>?
 
         return flatMap { next in
             newExpiration = newExpiration > next.expiration ? newExpiration : next.expiration
@@ -388,9 +388,9 @@ extension Publisher {
         .eraseToAnyPublisher()
     }
 
-    func onError<O, E: Error>(
+    func onError(
         handler: @escaping () -> Void
-    ) -> AnyPublisher<O, E> where Output == O, Failure == E {
+    ) -> AnyPublisher<Output, Failure> {
         handleEvents(receiveCompletion: { next in
             switch next {
             case .failure: handler()
