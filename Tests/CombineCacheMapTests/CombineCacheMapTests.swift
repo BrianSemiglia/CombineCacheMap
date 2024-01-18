@@ -553,7 +553,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(whenExceeding: .seconds(1), cache: cache) { x in
+                .cacheMap(cache: cache, whenExceeding: .seconds(1)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 2)
                     return x
@@ -588,7 +588,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .cacheMap(whenExceeding: .seconds(2), cache: cache) { x in
+                .cacheMap(cache: cache, whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: TimeInterval(x))
                     return x
@@ -624,7 +624,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .setFailureType(to: Error.self)
-                .cacheMap(whenExceeding: .seconds(2), cache: cache) { x in
+                .cacheMap(cache: cache, whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 1)
                     return x
