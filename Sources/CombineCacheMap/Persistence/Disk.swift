@@ -15,7 +15,7 @@ extension Persisting {
 
     // For FlatMap refreshing after
     public static func diskRefreshingAfter<O, E: Error>(
-        id: String = "default"
+        id: String
     ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
         Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
@@ -102,7 +102,7 @@ extension Persisting {
 
     // For FlatMap
     public static func disk<O: Codable, E: Error>(
-        id: String = "default"
+        id: String
     ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, Value == AnyPublisher<O, E> {
         Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
@@ -172,7 +172,7 @@ extension Persisting {
 
     // For Map
     public static func disk(
-        id: String = "default"
+        id: String
     ) -> Persisting<Key, Value> where Key: Codable, Value: Codable {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
