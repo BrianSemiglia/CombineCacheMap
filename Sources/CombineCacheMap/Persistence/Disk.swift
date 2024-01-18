@@ -48,7 +48,7 @@ extension Persisting {
                                 at: backing.disk.appendingPathExtension("\(key)")
                             )
                         }
-                        .refreshingOnExpiration(with: write) { _ in
+                        .refreshingWhenExpired(with: write) {
                             backing.writes.removeObject(forKey: key)
                             backing.memory.removeObject(forKey: key)
                             try? FileManager.default.removeItem(
@@ -355,9 +355,9 @@ private extension Publishers {
 }
 
 extension Publisher {
-    func refreshingOnExpiration<O: ExpiringValue, E: Error>(
+    func refreshingWhenExpired<O: ExpiringValue, E: Error>(
         with refresher: AnyPublisher<O, E>,
-        onExpiration: @escaping (AnyPublisher<O, E>) -> Void = { _ in }
+        didExpire: @escaping () -> Void = {}
     ) -> AnyPublisher<O, E> where Output == O, Failure == E {
         var newExpiration = Date(timeIntervalSince1970: 0)
         var newPublisher: AnyPublisher<O, Failure>?
@@ -381,7 +381,7 @@ extension Publisher {
                     }
                     .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
                     .eraseToAnyPublisher()
-                onExpiration(newPublisher!)
+                didExpire()
                 return newPublisher!
             }
         }

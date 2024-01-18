@@ -47,7 +47,7 @@ extension Persisting {
                 cache.setObject(
                     value.replayingIndefinitely
                         .onError { cache.removeObject(forKey: key) }
-                        .refreshingOnExpiration(with: value),
+                        .refreshingWhenExpired(with: value),
                     forKey: key
                 )
             },
