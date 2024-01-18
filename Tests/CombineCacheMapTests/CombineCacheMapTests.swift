@@ -803,13 +803,18 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldIgnoreCachedErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory()
-        cache.persistToDisk(
+        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory().adding(
             key: 1,
-            item: AnyPublisher<Int, Foo>.create {
+            value: AnyPublisher<Int, Error>.create {
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
+        )
+
+        // Verify persistence of Error
+        XCTAssertEqual(
+            try? cache.value(1)?.toBlocking(),
+            nil
         )
 
         var cacheMisses: Int = 0
@@ -830,14 +835,22 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldIgnoreCachedErrors_Disk() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .disk(id: "\(#function)")
+        let id = "\(#function)"
+        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .disk(id: id)
         cache.reset()
         cache.persistToDisk(
+            id: id,
             key: 1,
-            item: AnyPublisher<Int, Foo>.create {
+            item: AnyPublisher<Int, Error>.create {
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
+        )
+
+        // Verify persistence of Error
+        XCTAssertEqual(
+            try? cache.value(1)?.toBlocking(),
+            nil
         )
 
         var cacheMisses: Int = 0

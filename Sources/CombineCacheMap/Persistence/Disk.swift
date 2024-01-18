@@ -205,10 +205,10 @@ extension Persisting {
     }
 
     // Testing
-    internal func persistToDisk<K: Codable, V: Codable, E: Error>(key: K, item: AnyPublisher<V, E>) {
+    internal func persistToDisk<K: Codable, V: Codable, E: Error>(id: String, key: K, item: AnyPublisher<V, E>) {
         _ = item
             .persistingOutputAsSideEffect(
-                to: Self.directory.appendingPathExtension("default"),
+                to: Self.directory.appendingPathExtension(id),
                 withKey: try! Persisting<K, V>.sha256Hash(for: key)
             )
             .sink { _ in }
