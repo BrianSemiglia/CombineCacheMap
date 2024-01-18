@@ -838,6 +838,7 @@ final class CombineCacheMapTests: XCTestCase {
         struct Foo: Error {}
 
         let cache: Persisting<Int, AnyPublisher<Int, Error>> = .disk(id: "\(#function)")
+        cache.reset()
         cache.persistToDisk(
             key: 1,
             item: AnyPublisher<Int, Foo>.create {
