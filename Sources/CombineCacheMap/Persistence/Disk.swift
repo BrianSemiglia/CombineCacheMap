@@ -3,12 +3,6 @@ import Combine
 import CombineExt
 import CryptoKit
 
-public protocol ExpiringValue {
-    associatedtype Value
-    var value: Value { get }
-    var expiration: Date { get }
-}
-
 extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }

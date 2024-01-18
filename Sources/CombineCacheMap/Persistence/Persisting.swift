@@ -29,6 +29,12 @@ public struct Persisting<Key, Value> {
     }
 }
 
+public protocol ExpiringValue {
+    associatedtype Value
+    var value: Value { get }
+    var expiration: Date { get }
+}
+
 public struct Expiring<T>: Codable, ExpiringValue where T: Codable {
     public let value: T
     public let expiration: Date
