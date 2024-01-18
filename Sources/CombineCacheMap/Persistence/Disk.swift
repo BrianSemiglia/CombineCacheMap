@@ -55,9 +55,26 @@ extension Persisting {
                                 at: backing.disk.appendingPathExtension("\(key)")
                             )
                         }
+                    let shared = write.replayingIndefinitely
 
                     return Publishers.Merge(
                         shared.eraseToAnyPublisher(),
+                        shared
+                            .onError {
+                                backing.writes.removeObject(forKey: key)
+                                backing.memory.removeObject(forKey: key)
+                                try? FileManager.default.removeItem(
+                                    at: backing.disk.appendingPathExtension("\(key)")
+                                )
+                            }
+                            .refreshingWhenExpired(with: write) {
+                                backing.writes.removeObject(forKey: key)
+                                backing.memory.removeObject(forKey: key)
+                                try? FileManager.default.removeItem(
+                                    at: backing.disk.appendingPathExtension("\(key)")
+                                )
+                            }
+                            .eraseToAnyPublisher(),
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
