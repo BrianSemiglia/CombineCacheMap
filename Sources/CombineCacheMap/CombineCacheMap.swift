@@ -8,12 +8,11 @@ extension Publisher where Output: Hashable {
     /**
     Caches events and replays when latest incoming value equals a previous and the execution of the map took more time than the specified duration else produces new events.
     */
-
     public func cacheMap<T>(
         whenExceeding duration: DispatchTimeInterval,
         cache: Persisting<Output, T> = .memory(),
         input: @escaping (Output) -> T
-    ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, T>, key: Optional<Self.Output>, value: Optional<T>)>, T> {
+    ) -> AnyPublisher<T, Failure> {
         scan((
             cache: cache,
             key: Optional<Output>.none,
@@ -51,6 +50,7 @@ extension Publisher where Output: Hashable {
             value ??
             key.flatMap { cache.value($0) }
         }
+        .eraseToAnyPublisher()
     }
 
     /**
@@ -60,23 +60,10 @@ extension Publisher where Output: Hashable {
         cache: Persisting<Output, T> = .memory(),
         when condition: @escaping (Output) -> Bool = { _ in true },
         transform: @escaping (Output) -> T
-    ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, T>, key: Optional<Self.Output>, value: Optional<T>)>, T> {
-        scan((
-            cache: cache,
-            key: Optional<Output>.none,
-            value: Optional<T>.none
-        )) {(
-            cache: condition($1) == false ? $0.cache : cache.adding(
-                key: $1,
-                value: transform($1)
-            ),
-            key: $1,
-            value: condition($1) ? nil : transform($1)
-        )}
-        .compactMap { (cache, key, value) in
-            value ??
-            key.flatMap { cache.value($0) }
-        }
+    ) -> AnyPublisher<T, Self.Failure> {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .eraseToAnyPublisher()
     }
 
     /**
@@ -85,14 +72,12 @@ extension Publisher where Output: Hashable {
     public func cacheFlatMap<T>(
         cache: Persisting<Output, AnyPublisher<T, Failure>> = .memory(),
         when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
-    ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        cachedReplay(
-            cache: cache,
-            when: condition,
-            publisher: input
-        )
-        .flatMap { $0 }
+        transform: @escaping (Output) -> AnyPublisher<T, Failure>
+    ) -> AnyPublisher<T, Self.Failure> {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .flatMap { $0 }
+            .eraseToAnyPublisher()
     }
 
     /**
@@ -102,25 +87,50 @@ extension Publisher where Output: Hashable {
     public func cacheFlatMapLatest<T>(
         cache: Persisting<Output, AnyPublisher<T, Failure>> = .memory(),
         when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
-    ) -> Publishers.SwitchToLatest<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> {
-        cachedReplay(
-            cache: cache,
-            when: condition,
-            publisher: input
-        )
-        .switchToLatest()
+        transform: @escaping (Output) -> AnyPublisher<T, Failure>
+    ) -> AnyPublisher<T, Self.Failure> {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .switchToLatest()
+            .eraseToAnyPublisher()
     }
 
-    private func cachedReplay<T>(
-        cache: Persisting<Output, AnyPublisher<T, Failure>>,
+    public func cacheFlatMapLatest<T, E: ExpiringValue>(
+        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memory(),
         when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<T, Failure>
-    ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<T, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<T, Self.Failure>>)>, AnyPublisher<T, Self.Failure>> {
+        transform: @escaping (Output) -> AnyPublisher<E, Failure>
+    ) -> AnyPublisher<T, Self.Failure> where E.Value == T {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .map { $0.map(\.value) }
+            .switchToLatest()
+            .eraseToAnyPublisher()
+    }
+
+    /**
+     Caches publishers and replays their events when latest incoming value equals a previous value and output Date is greater than Date of event else produces new events.
+     */
+    public func cacheFlatMap<T, E: ExpiringValue>(
+        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memoryRefreshingAfter(),
+        when condition: @escaping (Output) -> Bool = { _ in true },
+        transform: @escaping (Output) -> AnyPublisher<E, Failure>
+    ) -> AnyPublisher<T, Self.Failure> where E.Value == T {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .map { $0.map(\.value) }
+            .flatMap { $0 }
+            .eraseToAnyPublisher()
+    }
+
+    private func cachingOutput<U>(
+        of input: @escaping (Output) -> U,
+        to cache: Persisting<Output, U>,
+        when condition: @escaping (Output) -> Bool = { _ in true }
+    ) -> AnyPublisher<U, Self.Failure> {
         scan((
             cache: cache,
             key: Optional<Output>.none,
-            value: Optional<AnyPublisher<T, Failure>>.none
+            value: Optional<U>.none
         )) {(
             cache: condition($1) == false ? $0.cache : $0.cache.adding(
                 key: $1,
@@ -133,69 +143,7 @@ extension Publisher where Output: Hashable {
             value ??
             key.flatMap { cache.value($0) }
         }
-    }
-
-    public func cacheFlatMapLatest<T, E: ExpiringValue>(
-        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memory(),
-        when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<E, Failure>
-    ) -> Publishers.SwitchToLatest<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<E, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<E, Self.Failure>>)>, AnyPublisher<T, Self.Failure>>> where E.Value == T {
-        cachedReplay(
-            cache: cache,
-            when: condition,
-            publisher: input
-        )
-        .switchToLatest()
-    }
-
-    private func cachedReplay<T, E: ExpiringValue>(
-        cache: Persisting<Output, AnyPublisher<E, Failure>>,
-        when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<E, Failure>
-    ) -> Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<E, Self.Failure>>, key: Optional<Self.Output>, value: Optional<AnyPublisher<E, Self.Failure>>)>, AnyPublisher<T, Self.Failure>> where E.Value == T {
-        scan((
-            cache: cache,
-            key: Optional<Output>.none,
-            value: Optional<AnyPublisher<E, Failure>>.none
-        )) {(
-            cache: condition($1) == false ? $0.cache : $0.cache.adding(
-                key: $1,
-                value: input($1)
-            ),
-            key: $1,
-            value: condition($1) ? nil : input($1)
-        )}
-        .compactMap { (cache, key, value) in
-            value?.map(\.value).eraseToAnyPublisher() ??
-            key.flatMap { cache.value($0) }.flatMap { $0.map(\.value) }?.eraseToAnyPublisher()
-        }
-    }
-
-    /**
-     Caches publishers and replays their events when latest incoming value equals a previous value and output Date is greater than Date of event else produces new events.
-     */
-    public func cacheFlatMap<T, E: ExpiringValue>(
-        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memoryRefreshingAfter(),
-        when condition: @escaping (Output) -> Bool = { _ in true },
-        publisher input: @escaping (Output) -> AnyPublisher<E, Failure>
-    ) -> Publishers.FlatMap<AnyPublisher<T, Self.Failure>, Publishers.CompactMap<Publishers.Scan<Self, (cache: Persisting<Self.Output, AnyPublisher<E, Self.Failure>>, key: Optional<Self.Output>, value: AnyPublisher<E, Self.Failure>?)>, AnyPublisher<T, Self.Failure>>> where E.Value == T {
-        scan((
-            cache: cache,
-            key: Optional<Output>.none,
-            value: Optional<AnyPublisher<E, Failure>>.none
-        )) {(
-            cache: condition($1) == false ? $0.cache : $0.cache.adding(
-                key: $1,
-                value: input($1)
-            ),
-            key: $1,
-            value: condition($1) ? nil : input($1)
-        )}
-        .compactMap { (cache, key, value) in
-            value?.map(\.value).eraseToAnyPublisher() ??
-            key.flatMap { cache.value($0) }.flatMap { $0.map(\.value) }?.eraseToAnyPublisher()
-        }
-        .flatMap { $0 }
+        .eraseToAnyPublisher()
     }
 }
 
