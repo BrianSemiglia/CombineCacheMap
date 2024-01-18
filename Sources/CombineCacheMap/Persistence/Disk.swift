@@ -19,7 +19,9 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func diskRefreshingAfter<O, E: Error>(id: String = "default") -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
+    public static func diskRefreshingAfter<O, E: Error>(
+        id: String = "default"
+    ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
         Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
@@ -39,26 +41,9 @@ extension Persisting {
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
                     backing.writes.removeObject(forKey: key) // SIDE-EFFECT
 
-                    let shared = write
-                        .replayingIndefinitely
-                        .onError {
-                            backing.writes.removeObject(forKey: key)
-                            backing.memory.removeObject(forKey: key)
-                            try? FileManager.default.removeItem(
-                                at: backing.disk.appendingPathExtension("\(key)")
-                            )
-                        }
-                        .refreshingWhenExpired(with: write) {
-                            backing.writes.removeObject(forKey: key)
-                            backing.memory.removeObject(forKey: key)
-                            try? FileManager.default.removeItem(
-                                at: backing.disk.appendingPathExtension("\(key)")
-                            )
-                        }
                     let shared = write.replayingIndefinitely
 
                     return Publishers.Merge(
-                        shared.eraseToAnyPublisher(),
                         shared
                             .onError {
                                 backing.writes.removeObject(forKey: key)
@@ -121,7 +106,9 @@ extension Persisting {
     }
 
     // For FlatMap
-    public static func disk<O: Codable, E: Error>(id: String = "default") -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, Value == AnyPublisher<O, E> {
+    public static func disk<O: Codable, E: Error>(
+        id: String = "default"
+    ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, Value == AnyPublisher<O, E> {
         Persisting<Key, AnyPublisher<O, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<O, Error>>(),
@@ -189,7 +176,9 @@ extension Persisting {
     }
 
     // For Map
-    public static func disk(id: String = "default") -> Persisting<Key, Value> where Key: Codable, Value: Codable {
+    public static func disk(
+        id: String = "default"
+    ) -> Persisting<Key, Value> where Key: Codable, Value: Codable {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
@@ -430,7 +419,7 @@ private extension Publisher {
                         withIntermediateDirectories: true
                     )
                     try JSONEncoder()
-                        .encode(next.map(WrappedEvent.init(event:)))
+                        .encode(next.map(WrappedEvent.init))
                         .write(to: url.appendingPathComponent("\(key)"))
                 } catch {
 
