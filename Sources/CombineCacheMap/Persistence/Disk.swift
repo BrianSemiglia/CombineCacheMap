@@ -227,7 +227,7 @@ private extension Collection {
     func isExpired<T>() -> Bool where Element == WrappedEvent<T>, T: ExpiringValue {
         switch first?.event {
         case .value(let value):
-            if Date() > value.expiration {
+            if value.expiration.map({ $0 <= Date() }) ?? false {
                 return true
             } else {
                 return false

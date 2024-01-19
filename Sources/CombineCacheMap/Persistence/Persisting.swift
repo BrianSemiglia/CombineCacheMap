@@ -30,15 +30,15 @@ public struct Persisting<Key, Value> {
 }
 
 public protocol ExpiringValue {
-    associatedtype Value
+    associatedtype Value: Codable
     var value: Value { get }
-    var expiration: Date { get }
+    var expiration: Date? { get }
 }
 
 public struct Expiring<T>: Codable, ExpiringValue where T: Codable {
     public let value: T
-    public let expiration: Date
-    public init(value: T, expiration: Date) {
+    public let expiration: Date?
+    public init(value: T, expiration: Date?) {
         self.value = value
         self.expiration = expiration
     }
@@ -70,26 +70,32 @@ extension Publisher {
         var newPublisher: AnyPublisher<Output, Failure>?
 
         return flatMap { next in
-            newExpiration = newExpiration > next.expiration ? newExpiration : next.expiration
-            if Date() < newExpiration {
-                newPublisher = newPublisher ?? Just(next)
+            if let x = next.expiration {
+                newExpiration = newExpiration > x ? newExpiration : x
+                if Date() < newExpiration {
+                    newPublisher = newPublisher ?? Just(next)
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                    return newPublisher!
+                } else {
+                    newPublisher = refresher
+                        .handleEvents(receiveOutput: {
+                            newExpiration = $0.expiration ?? newExpiration
+                        })
+                        .flatMap { next in
+                            Just(next)
+                                .setFailureType(to: Failure.self)
+                                .eraseToAnyPublisher()
+                        }
+                        .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
+                        .eraseToAnyPublisher()
+                    didExpire()
+                    return newPublisher!
+                }
+            } else {
+                return Just(next)
                     .setFailureType(to: Failure.self)
                     .eraseToAnyPublisher()
-                return newPublisher!
-            } else {
-                newPublisher = refresher
-                    .handleEvents(receiveOutput: { next in
-                        newExpiration = next.expiration
-                    })
-                    .flatMap { next in
-                        Just(next)
-                            .setFailureType(to: Failure.self)
-                            .eraseToAnyPublisher()
-                    }
-                    .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
-                    .eraseToAnyPublisher()
-                didExpire()
-                return newPublisher!
             }
         }
         .eraseToAnyPublisher()
