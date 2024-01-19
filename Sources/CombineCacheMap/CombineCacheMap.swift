@@ -70,41 +70,20 @@ extension Publisher where Output: Hashable {
      Caches publishers and replays their events when latest incoming value equals a previous else produces new events.
      */
     public func cacheFlatMap<T>(
-        cache: Persisting<Output, AnyPublisher<T, Failure>> = .memory(),
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .memory(),
         when condition: @escaping (Output) -> Bool = { _ in true },
         transform: @escaping (Output) -> AnyPublisher<T, Failure>
     ) -> AnyPublisher<T, Self.Failure> {
         self
-            .cachingOutput(of: transform, to: cache, when: condition)
-            .flatMap { $0 }
-            .eraseToAnyPublisher()
-    }
-
-    /**
-     Caches completed publishers and replays their events when latest incoming value equals a previous else produces new events.
-     Cancels playback of previous publishers.
-     */
-    public func cacheFlatMapLatest<T>(
-        cache: Persisting<Output, AnyPublisher<T, Failure>> = .memory(),
-        when condition: @escaping (Output) -> Bool = { _ in true },
-        transform: @escaping (Output) -> AnyPublisher<T, Failure>
-    ) -> AnyPublisher<T, Self.Failure> {
-        self
-            .cachingOutput(of: transform, to: cache, when: condition)
-            .switchToLatest()
-            .eraseToAnyPublisher()
-    }
-
-    public func cacheFlatMapLatest<T, E: ExpiringValue>(
-        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memory(),
-        when condition: @escaping (Output) -> Bool = { _ in true },
-        transform: @escaping (Output) -> AnyPublisher<E, Failure>
-    ) -> AnyPublisher<T, Self.Failure> where E.Value == T {
-        self
-            .cachingOutput(of: transform, to: cache, when: condition)
-            .map { $0.map(\.value) }
-            .switchToLatest()
-            .eraseToAnyPublisher()
+            .cacheFlatMap(
+                cache: cache,
+                when: condition,
+                transform: { x -> AnyPublisher<Expiring<T>, Failure> in
+                    transform(x)
+                        .map { Expiring(value: $0, expiration: nil) }
+                        .eraseToAnyPublisher()
+                }
+            )
     }
 
     /**
@@ -119,6 +98,39 @@ extension Publisher where Output: Hashable {
             .cachingOutput(of: transform, to: cache, when: condition)
             .map { $0.map(\.value) }
             .flatMap { $0 }
+            .eraseToAnyPublisher()
+    }
+
+    /**
+     Caches completed publishers and replays their events when latest incoming value equals a previous else produces new events.
+     Cancels playback of previous publishers.
+     */
+    public func cacheFlatMapLatest<T>(
+        cache: Persisting<Output, AnyPublisher<Expiring<T>, Failure>> = .memory(),
+        when condition: @escaping (Output) -> Bool = { _ in true },
+        transform: @escaping (Output) -> AnyPublisher<T, Failure>
+    ) -> AnyPublisher<T, Self.Failure> {
+        self
+            .cacheFlatMapLatest(
+                cache: cache,
+                when: condition,
+                transform: { x -> AnyPublisher<Expiring<T>, Failure> in
+                    transform(x)
+                        .map { Expiring(value: $0, expiration: nil) }
+                        .eraseToAnyPublisher()
+                }
+            )
+    }
+
+    public func cacheFlatMapLatest<T, E: ExpiringValue>(
+        cache: Persisting<Output, AnyPublisher<E, Failure>> = .memory(),
+        when condition: @escaping (Output) -> Bool = { _ in true },
+        transform: @escaping (Output) -> AnyPublisher<E, Failure>
+    ) -> AnyPublisher<T, Self.Failure> where E.Value == T {
+        self
+            .cachingOutput(of: transform, to: cache, when: condition)
+            .map { $0.map(\.value) }
+            .switchToLatest()
             .eraseToAnyPublisher()
     }
 

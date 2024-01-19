@@ -97,7 +97,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testCacheFlatMapSingle_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Int, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -144,7 +144,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testCacheFlatMapMultiple_Disk() {
-        let cache = Persisting<Int, AnyPublisher<String, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Expiring<String>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -191,7 +191,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testCacheFlatMapReset_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Int, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -238,7 +238,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testCacheFlatMapLatest_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Int, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -249,7 +249,7 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
             )
             .setFailureType(to: Error.self)
-            .cacheFlatMapLatest(cache: cache) { x in
+            .cacheFlatMapLatest(cache: cache) { x -> AnyPublisher<Int, Error> in
                 AnyPublisher.create {
                     cacheMisses += 1
                     $0.send(x)
@@ -803,9 +803,9 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldIgnoreCachedErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory().adding(
+        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Error>> = .memory().adding(
             key: 1,
-            value: AnyPublisher<Int, Error>.create {
+            value: .create {
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
@@ -813,7 +813,7 @@ final class CombineCacheMapTests: XCTestCase {
 
         // Verify persistence of Error
         XCTAssertEqual(
-            try? cache.value(1)?.toBlocking(),
+            try? cache.value(1)?.map(\.value).toBlocking(),
             nil
         )
 
@@ -824,7 +824,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .setFailureType(to: Error.self)
                 .cacheFlatMap(cache: cache) { _ in
                     cacheMisses += 1
-                    return Empty().eraseToAnyPublisher()
+                    return Empty<Int, Error>().eraseToAnyPublisher()
                 }
                 .toBlocking(),
             [] as [Int] // nil means error was received, [] means it was not
@@ -836,12 +836,12 @@ final class CombineCacheMapTests: XCTestCase {
         struct Foo: Error {}
 
         let id = "\(#function)"
-        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .disk(id: id)
+        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Error>> = .disk(id: id)
         cache.reset()
         cache.persistToDisk(
             id: id,
             key: 1,
-            item: AnyPublisher<Int, Error>.create {
+            item: AnyPublisher<Expiring<Int>, Error>.create {
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
@@ -849,7 +849,7 @@ final class CombineCacheMapTests: XCTestCase {
 
         // Verify persistence of Error
         XCTAssertEqual(
-            try? cache.value(1)?.toBlocking(),
+            try? cache.value(1)?.map(\.value).toBlocking(),
             nil
         )
 
@@ -860,7 +860,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .setFailureType(to: Error.self)
                 .cacheFlatMap(cache: cache) { _ in
                     cacheMisses += 1
-                    return Empty().eraseToAnyPublisher()
+                    return Empty<Int, Error>().eraseToAnyPublisher()
                 }
                 .toBlocking(),
             [] as [Int] // nil means error was received, [] means it was not
@@ -871,15 +871,15 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldNotCacheErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Int, Error>> = .memory()
+        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Foo>> = .memory()
 
         // 1. Attempt to persist error
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
+                .setFailureType(to: Foo.self)
                 .cacheFlatMap(cache: cache) { _ in
-                    Fail(error: Foo()).eraseToAnyPublisher()
+                    Fail<Int, Foo>(error: Foo()).eraseToAnyPublisher()
                 }
                 .toBlocking(),
             Optional<[Int]>.none // nil means error was received, [] means it was not
@@ -890,10 +890,10 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
+                .setFailureType(to: Foo.self)
                 .cacheFlatMap(cache: cache) { _ in
                     cacheMisses += 1
-                    return Empty().eraseToAnyPublisher()
+                    return Empty<Int, Foo>().eraseToAnyPublisher()
                 }
                 .toBlocking(),
             [] as [Int] // nil means error was received, [] means it was not
@@ -904,7 +904,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldNotCacheErrors_Disk() {
         struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<Int, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Foo>>.disk(id: "\(#function)")
         cache.reset()
 
         // 1. Attempt to persist error
@@ -913,7 +913,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .setFailureType(to: Error.self)
                 .cacheFlatMap(cache: cache) { _ in
-                    Fail(error: Foo()).eraseToAnyPublisher()
+                    Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
                 }
                 .toBlocking(),
             Optional<[Int]>.none // nil means error was replayed, [] means it was not
@@ -927,7 +927,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .setFailureType(to: Error.self)
                 .cacheFlatMap(cache: cache) { _ in
                     cacheMisses += 1
-                    return Empty().eraseToAnyPublisher()
+                    return Empty<Int, Error>().eraseToAnyPublisher()
                 }
                 .toBlocking(),
             [] as [Int] // nil means error was received, [] means it was not
