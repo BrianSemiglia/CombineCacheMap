@@ -3,8 +3,8 @@ import Combine
 
 public struct Persisting<Key, Value> {
 
-    let set: (Value, Key) -> Void
-    let value: (Key) -> Value?
+    public let set: (Value, Key) -> Void
+    public let value: (Key) -> Value?
     private let _reset: () -> Void
 
     public init<Backing>(
@@ -38,6 +38,10 @@ public protocol ExpiringValue {
 public struct Expiring<T>: Codable, ExpiringValue where T: Codable {
     public let value: T
     public let expiration: Date
+    public init(value: T, expiration: Date) {
+        self.value = value
+        self.expiration = expiration
+    }
 }
 
 extension Persisting {
