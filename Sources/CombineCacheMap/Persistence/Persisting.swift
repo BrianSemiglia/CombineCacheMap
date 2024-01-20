@@ -82,7 +82,6 @@ extension Publisher {
                                 .setFailureType(to: Self.Failure.self)
                                 .eraseToAnyPublisher()
                         }
-                        .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
                         .eraseToAnyPublisher()
                     didExpire()
                     return latestPublisher!
