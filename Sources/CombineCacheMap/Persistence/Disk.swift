@@ -8,7 +8,7 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func diskRefreshingAfter<O, E: Error>(
+    public static func disk<O, E: Error>(
         id: String
     ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
         Persisting<Key, AnyPublisher<O, Error>>(
@@ -94,76 +94,6 @@ extension Persisting {
         )
     }
 
-    // For FlatMap
-    public static func disk<O: Codable, E: Error>(
-        id: String
-    ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, Value == AnyPublisher<O, E> {
-        Persisting<Key, AnyPublisher<O, Error>>(
-            backing: (
-                writes: TypedCache<String, AnyPublisher<O, Error>>(),
-                memory: TypedCache<String, AnyPublisher<O, Error>>(),
-                disk: directory.appendingPathExtension(id)
-            ),
-            set: { backing, value, key in
-                backing.writes.setObject(
-                    value,
-                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                )
-            },
-            value: { backing, key in
-                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                if let write = backing.writes.object(forKey: key) {
-                    // 1. Publisher needs to execute once to capture values.
-                    //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
-                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
-                    let shared = write
-                        .replayingIndefinitely
-                        .onError {
-                            backing.writes.removeObject(forKey: key)
-                            backing.memory.removeObject(forKey: key)
-                            try? FileManager.default.removeItem(
-                                at: backing.disk.appendingPathExtension("\(key)")
-                            )
-                        }
-                    return Publishers.Merge(
-                        shared.eraseToAnyPublisher(),
-                        shared
-                            .eraseToAnyPublisher()
-                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
-                            .setFailureType(to: Error.self)
-                            .flatMap { _ in Empty() } // publisher completes with no output
-                            .eraseToAnyPublisher()
-                    ).eraseToAnyPublisher()
-                } else if let memory = backing.memory.object(forKey: key) {
-                    // 3. Further gets come from memory
-                    return memory
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
-                    // 2. Data is made an observable again but without the disk write side-effect
-                    if values.didFinishWithError() {
-                        backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
-                        return nil
-                    } else {
-                        let o = Publishers.publisher(from: values)
-                        backing.memory.setObject(o, forKey: key)
-                        return o
-                    }
-                } else {
-                    return nil
-                }
-            },
-            reset: { backing in
-                backing.memory.removeAllObjects()
-                try? FileManager.default.removeItem(
-                    at: backing.disk
-                )
-            }
-        )
-    }
-
     // For Map
     public static func disk(
         id: String
@@ -191,7 +121,7 @@ extension Persisting {
         )
     }
 
-    private static func sha256Hash<T: Codable>(for data: T) throws -> String {
+    static func sha256Hash<T: Codable>(for data: T) throws -> String {
         SHA256
             .hash(data: try JSONEncoder().encode(data))
             .compactMap { String(format: "%02x", $0) }
@@ -223,7 +153,7 @@ private extension URL {
     }
 }
 
-private extension Collection {
+extension Collection {
     func isExpired<T>() -> Bool where Element == WrappedEvent<T>, T: ExpiringValue {
         switch first?.event {
         case .value(let value):
@@ -238,7 +168,7 @@ private extension Collection {
     }
 }
 
-private extension Collection {
+extension Collection {
     func didFinishWithError<T>() -> Bool where Element == WrappedEvent<T> {
         contains {
             switch $0.event {
@@ -249,7 +179,7 @@ private extension Collection {
     }
 }
 
-private struct WrappedEvent<T: Codable>: Codable {
+struct WrappedEvent<T: Codable>: Codable {
     let event: CombineExt.Event<T, Error>
 
     // Custom Error to handle non-codable errors
@@ -307,7 +237,7 @@ private struct WrappedEvent<T: Codable>: Codable {
     }
 }
 
-private extension Publishers {
+extension Publishers {
     static func publisher<O>(from wrappedEvents: [WrappedEvent<O>]) -> AnyPublisher<O, Error> {
         wrappedEvents
             .publisher

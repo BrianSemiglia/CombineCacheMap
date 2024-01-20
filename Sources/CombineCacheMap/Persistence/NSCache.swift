@@ -20,42 +20,66 @@ extension Persisting {
         )
     }
 
-    public static func memory<O, E: Error>() -> Persisting<Key, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
-        Persisting<Key, AnyPublisher<O, E>>(
-            backing:TypedCache<Key, AnyPublisher<O, E>>(),
-            set: { cache, value, key in
-                cache.setObject(
-                    value
-                        .onError { cache.removeObject(forKey: key) }
-                        .replayingIndefinitely,
-                    forKey: key
+    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<T, Error>> where Key: Codable, T: ExpiringValue, T: Codable, Value == AnyPublisher<T, E> {
+        Persisting<Key, AnyPublisher<T, Error>>(
+            backing: (
+                writes: TypedCache<String, AnyPublisher<T, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<T>]>()
+            ),
+            set: { backing, value, key in
+                backing.writes.setObject(
+                    value,
+                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                 )
             },
-            value: { cache, key in
-                cache.object(forKey: key)
-            },
-            reset: { backing in
-                backing.removeAllObjects()
-            }
-        )
-    }
+            value: { backing, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                if let write = backing.writes.object(forKey: key) {
+                    // 1. Publisher needs to execute once to capture values.
+                    //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
+                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
 
-    public static func memoryRefreshingAfter<O: ExpiringValue, E: Error>() -> Persisting<Key, AnyPublisher<O, E>> where Value == AnyPublisher<O, E> {
-        Persisting<Key, AnyPublisher<O, E>>(
-            backing: TypedCache<Key, AnyPublisher<O, E>>(),
-            set: { cache, value, key in
-                cache.setObject(
-                    value.replayingIndefinitely
-                        .onError { cache.removeObject(forKey: key) }
-                        .refreshingWhenExpired(with: value),
-                    forKey: key
-                )
-            },
-            value: { cache, key in
-                cache.object(forKey: key)
+                    let shared = write.replayingIndefinitely
+
+                    return Publishers.Merge(
+                        shared
+                            .onError {
+                                backing.writes.removeObject(forKey: key)
+                                backing.memory.removeObject(forKey: key)
+                            }
+                            .refreshingWhenExpired(with: write) {
+                                backing.writes.removeObject(forKey: key)
+                                backing.memory.removeObject(forKey: key)
+                            }
+                            .eraseToAnyPublisher(),
+                        shared
+                            .materialize()
+                            .collect()
+                            .handleEvents(receiveOutput: { next in
+                                backing.memory.setObject(next.map(WrappedEvent.init), forKey: key)
+                            })
+                            .map { _ in () }
+                            .setFailureType(to: Error.self)
+                            .flatMap { _ in Empty() } // publisher completes with nothing (void)
+                            .eraseToAnyPublisher()
+                    ).eraseToAnyPublisher()
+                } else if let memory = backing.memory.object(forKey: key) {
+                    // 3. Further gets come from memory
+                    if memory.isExpired() || memory.didFinishWithError() {
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        return nil
+                    } else {
+                        backing.memory.setObject(memory, forKey: key)
+                        return Publishers.publisher(from: memory)
+                    }
+                } else {
+                    return nil
+                }
             },
             reset: { backing in
-                backing.removeAllObjects()
+                backing.writes.removeAllObjects()
+                backing.memory.removeAllObjects()
             }
         )
     }
