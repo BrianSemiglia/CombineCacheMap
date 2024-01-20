@@ -13,13 +13,9 @@ extension Persisting {
             },
             value: { cache, key in
                 cache.object(forKey: key).flatMap { x -> Optional<Expiring<V>> in
-                    if let expiration = x.expiration {
-                        if let valid = expiration > Date() ? x : nil {
-                            return valid
-                        } else {
-                            cache.removeObject(forKey: key)
-                            return nil
-                        }
+                    if x.isExpired {
+                        cache.removeObject(forKey: key)
+                        return nil
                     } else {
                         return x
                     }

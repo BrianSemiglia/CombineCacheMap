@@ -113,15 +113,11 @@ extension Persisting {
                 (try? Persisting.sha256Hash(for: key))
                     .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
                     .flatMap { x in
-                        if let expiration = x?.expiration {
-                            if let valid = expiration > Date() ? x : nil {
-                                return valid
-                            } else {
-                                try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
-                                return nil
-                            }
-                        } else {
+                        if x.isExpired == false {
                             return x
+                        } else {
+                            try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
+                            return nil
                         }
                     }
             },

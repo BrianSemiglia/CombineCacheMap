@@ -38,6 +38,12 @@ public struct Expiring<T>: Codable where T: Codable {
     }
 }
 
+extension Expiring {
+    var isExpired: Bool {
+        expiration.map { $0 <= Date() } ?? false
+    }
+}
+
 extension Persisting {
     func adding(
         key: Key,
