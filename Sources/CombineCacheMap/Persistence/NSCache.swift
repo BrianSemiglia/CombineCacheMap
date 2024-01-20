@@ -20,11 +20,11 @@ extension Persisting {
         )
     }
 
-    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<T, Error>> where Key: Codable, T: ExpiringValue, T: Codable, Value == AnyPublisher<T, E> {
-        Persisting<Key, AnyPublisher<T, Error>>(
+    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<Expiring<T>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<T>, E> {
+        Persisting<Key, AnyPublisher<Expiring<T>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<T, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<T>]>()
+                writes: TypedCache<String, AnyPublisher<Expiring<T>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Expiring<T>>]>()
             ),
             set: { backing, value, key in
                 backing.writes.setObject(

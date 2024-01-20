@@ -29,13 +29,7 @@ public struct Persisting<Key, Value> {
     }
 }
 
-public protocol ExpiringValue {
-    associatedtype Value: Codable
-    var value: Value { get }
-    var expiration: Date? { get }
-}
-
-public struct Expiring<T>: Codable, ExpiringValue where T: Codable {
+public struct Expiring<T>: Codable where T: Codable {
     public let value: T
     public let expiration: Date?
     public init(value: T, expiration: Date?) {
@@ -62,39 +56,40 @@ extension Persisting {
 }
 
 extension Publisher {
-    func refreshingWhenExpired(
-        with refresher: AnyPublisher<Output, Failure>,
+    func refreshingWhenExpired<T>(
+        with refresher: AnyPublisher<Self.Output, Self.Failure>,
         didExpire: @escaping () -> Void = {}
-    ) -> AnyPublisher<Output, Failure> where Output: ExpiringValue, Failure == Failure {
-        var newExpiration = Date(timeIntervalSince1970: 0)
-        var newPublisher: AnyPublisher<Output, Failure>?
+    ) -> AnyPublisher<Self.Output, Self.Failure> where Self.Output == Expiring<T> {
+
+        var latestExpiration = Date(timeIntervalSince1970: 0)
+        var latestPublisher: AnyPublisher<Self.Output, Self.Failure>?
 
         return flatMap { next in
             if let x = next.expiration {
-                newExpiration = newExpiration > x ? newExpiration : x
-                if Date() < newExpiration {
-                    newPublisher = newPublisher ?? Just(next)
-                        .setFailureType(to: Failure.self)
+                latestExpiration = latestExpiration > x ? latestExpiration : x
+                if Date() < latestExpiration {
+                    latestPublisher = latestPublisher ?? Just(next)
+                        .setFailureType(to: Self.Failure.self)
                         .eraseToAnyPublisher()
-                    return newPublisher!
+                    return latestPublisher!
                 } else {
-                    newPublisher = refresher
+                    latestPublisher = refresher
                         .handleEvents(receiveOutput: {
-                            newExpiration = $0.expiration ?? newExpiration
+                            latestExpiration = $0.expiration ?? latestExpiration
                         })
                         .flatMap { next in
                             Just(next)
-                                .setFailureType(to: Failure.self)
+                                .setFailureType(to: Self.Failure.self)
                                 .eraseToAnyPublisher()
                         }
                         .replayingIndefinitely // this might not work the way you think b/c i'm inside a flatmap. test multiple expirations vs misses
                         .eraseToAnyPublisher()
                     didExpire()
-                    return newPublisher!
+                    return latestPublisher!
                 }
             } else {
                 return Just(next)
-                    .setFailureType(to: Failure.self)
+                    .setFailureType(to: Self.Failure.self)
                     .eraseToAnyPublisher()
             }
         }
@@ -103,7 +98,7 @@ extension Publisher {
 
     func onError(
         handler: @escaping () -> Void
-    ) -> AnyPublisher<Output, Failure> {
+    ) -> AnyPublisher<Self.Output, Self.Failure> {
         handleEvents(receiveCompletion: { next in
             switch next {
             case .failure: handler()

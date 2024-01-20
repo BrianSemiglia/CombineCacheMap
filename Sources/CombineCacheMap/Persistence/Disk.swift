@@ -8,13 +8,13 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func disk<O, E: Error>(
+    public static func disk<T, E: Error>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<O, Error>> where Key: Codable, O: Codable, O: ExpiringValue, Value == AnyPublisher<O, E> {
-        Persisting<Key, AnyPublisher<O, Error>>(
+    ) -> Persisting<Key, AnyPublisher<Expiring<T>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<T>, E> {
+        Persisting<Key, AnyPublisher<Expiring<T>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<O, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<O>]>(),
+                writes: TypedCache<String, AnyPublisher<Expiring<T>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Expiring<T>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -67,7 +67,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<O>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<T>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isExpired() || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -154,7 +154,7 @@ private extension URL {
 }
 
 extension Collection {
-    func isExpired<T>() -> Bool where Element == WrappedEvent<T>, T: ExpiringValue {
+    func isExpired<T>() -> Bool where Element == WrappedEvent<Expiring<T>> {
         switch first?.event {
         case .value(let value):
             if value.expiration.map({ $0 <= Date() }) ?? false {
