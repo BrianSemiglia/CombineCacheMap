@@ -8,8 +8,8 @@ extension Publisher where Output: Hashable {
     /**
     Caches events and replays when latest incoming value equals a previous and the execution of the map took more time than the specified duration else produces new events.
     */
-    public func cacheMap<T>(
-        cache: Persisting<Output, T> = .memory(),
+    public func map<T>(
+        cache: Persisting<Output, T>,
         whenExceeding duration: DispatchTimeInterval,
         input: @escaping (Output) -> T
     ) -> AnyPublisher<T, Failure> {
@@ -56,8 +56,8 @@ extension Publisher where Output: Hashable {
     /**
      Caches events and replays when latest incoming value equals a previous else produces new events.
      */
-    public func cacheMap<T>(
-        cache: Persisting<Output, T> = .memory(),
+    public func map<T>(
+        cache: Persisting<Output, T>,
         when condition: @escaping (Output) -> Bool = { _ in true },
         transform: @escaping (Output) -> T
     ) -> AnyPublisher<T, Self.Failure> {

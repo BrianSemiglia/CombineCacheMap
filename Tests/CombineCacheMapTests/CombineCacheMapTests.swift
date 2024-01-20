@@ -10,7 +10,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap { x in
+                .map(cache: .memory()) { x in
                     cacheMisses += 1
                     return x
                 }
@@ -31,7 +31,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: cache) { x in
+                .map(cache: cache) { x in
                     cacheMisses += 1
                     return x
                 }
@@ -49,7 +49,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 2, 1, 3]
                 .publisher
-                .cacheMap(when: { $0 == 1 }) { x in
+                .map(cache: .memory(), when: { $0 == 1 }) { x in
                     cacheMisses += 1
                     return x
                 }
@@ -67,7 +67,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 2, 1, 3]
                 .publisher
-                .cacheMap(cache: cache, when: { $0 == 1 }) { x in
+                .map(cache: cache, when: { $0 == 1 }) { x in
                     cacheMisses += 1
                     return x
                 }
@@ -541,7 +541,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(whenExceeding: .seconds(1)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(1)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 2)
                     return x
@@ -560,7 +560,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: cache, whenExceeding: .seconds(1)) { x in
+                .map(cache: cache, whenExceeding: .seconds(1)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 2)
                     return x
@@ -576,7 +576,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .cacheMap(whenExceeding: .seconds(2)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: TimeInterval(x))
                     return x
@@ -595,7 +595,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .cacheMap(cache: cache, whenExceeding: .seconds(2)) { x in
+                .map(cache: cache, whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: TimeInterval(x))
                     return x
@@ -611,7 +611,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(whenExceeding: .seconds(2)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 1)
                     return x
@@ -630,7 +630,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: cache, whenExceeding: .seconds(2)) { x in
+                .map(cache: cache, whenExceeding: .seconds(2)) { x in
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 1)
                     return x
@@ -652,7 +652,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x in
                     cacheMissesInitial += 1
                     return x
                 }
@@ -668,7 +668,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x in
                     cacheMissesSubsequent += 1
                     return x
                 }
@@ -692,7 +692,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x in
                     cacheMissesInitial += 1
                     return x
                 }
@@ -708,7 +708,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x in
                     cacheMissesSubsequent += 1
                     return x
                 }
@@ -726,7 +726,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .cacheMap(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x in
                     cacheMisses2 += 1
                     return x
                 }
