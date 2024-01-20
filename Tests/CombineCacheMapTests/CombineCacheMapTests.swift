@@ -101,7 +101,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .memory()) { x in
                     AnyPublisher<Int, Error>.create {
                         cacheMisses += 1
@@ -128,7 +127,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .disk(id: "\(#function)")) { x in
                     AnyPublisher.create {
                         cacheMisses += 1
@@ -147,7 +145,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .disk(id: "\(#function)")) { x in
                     AnyPublisher.create {
                         cacheMisses2 += 1
@@ -168,7 +165,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .disk(id: "\(#function)")) { x in
                     AnyPublisher.create {
                         cacheMisses3 += 1
@@ -188,7 +184,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher<String, Error>.create {
                         cacheMisses += 1
@@ -216,7 +211,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     AnyPublisher<String, Error>.create {
                         cacheMisses += 1
@@ -241,7 +235,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 2, 1, 3]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: .memory(), when: { $0 == 1 }) { x in
                     AnyPublisher<Int, Error>.create {
                         cacheMisses += 1
@@ -264,7 +257,6 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 2, 1, 2]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache, when: { $0 == 1 }) { x in
                     AnyPublisher.create {
                         cacheMisses += 1
@@ -314,8 +306,7 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
                 Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
             )
-            .setFailureType(to: Error.self)
-            .flatMapLatest(cache: cache) { x -> AnyPublisher<Int, Error> in
+            .flatMapLatest(cache: cache) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
                     $0.send(x)
@@ -350,7 +341,6 @@ final class CombineCacheMapTests: XCTestCase {
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
         })
-        .setFailureType(to: Error.self)
         .flatMapLatest(cache: .memory()) { x in
             AnyPublisher.create {
                 cacheMisses += 1
@@ -403,7 +393,6 @@ final class CombineCacheMapTests: XCTestCase {
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
         })
-        .setFailureType(to: Error.self)
         .flatMapLatest(cache: .disk(id: "\(#function)")) { x in
             AnyPublisher.create {
                 cacheMisses += 1
@@ -442,7 +431,6 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
                 Just(1).delay(for: .seconds(2), scheduler: RunLoop.main)  // replayed
             )
-            .setFailureType(to: Error.self)
             .flatMap(cache: .memory()) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
@@ -468,7 +456,6 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
                 Just(1).delay(for: .seconds(2), scheduler: RunLoop.main)  // replayed
             )
-            .setFailureType(to: Error.self)
             .flatMap(cache: .disk(id: "\(#function)")) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
@@ -507,8 +494,7 @@ final class CombineCacheMapTests: XCTestCase {
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
         })
-        .setFailureType(to: Error.self)
-        .flatMap(cache: cache) { x -> AnyPublisher<Expiring<Int>, Error> in
+        .flatMap(cache: cache) { x in
             AnyPublisher.create {
                 cacheMisses += 1
                 $0.send(
@@ -565,7 +551,6 @@ final class CombineCacheMapTests: XCTestCase {
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
         })
-        .setFailureType(to: Error.self)
         .flatMap(cache: cache) { x in
             AnyPublisher.create {
                 cacheMisses += 1
@@ -725,7 +710,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Empty<Int, Error>().eraseToAnyPublisher()
@@ -761,7 +745,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Empty<Int, Error>().eraseToAnyPublisher()
@@ -781,7 +764,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
                 }
@@ -794,7 +776,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Empty<Int, Error>().eraseToAnyPublisher()
@@ -815,7 +796,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
                 }
@@ -828,7 +808,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Empty<Int, Error>().eraseToAnyPublisher()
@@ -845,19 +824,10 @@ final class CombineCacheMapTests: XCTestCase {
         let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.memory()
         cache.reset()
 
-        let delayed = Publishers.MergeMany(
-            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main),
-            Just(1).delay(for: .seconds(2), scheduler: RunLoop.main),
-            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main)
-        )
-
-        let notDelayed = [1, 1, 1]
-            .publisher
-
         var cacheMisses = 0
         XCTAssertEqual(
-            try? delayed
-                .setFailureType(to: Error.self)
+            try? [1, 1, 1]
+                .publisher
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Fail(error: Foo())
@@ -880,7 +850,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(
             try? [1, 1, 1]
                 .publisher
-                .setFailureType(to: Error.self)
                 .flatMap(cache: cache) { _ in
                     cacheMisses += 1
                     return Fail<Int, Error>(error: Foo())
