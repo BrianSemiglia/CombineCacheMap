@@ -9,14 +9,31 @@ extension Publisher where Self.Output: Hashable {
     Caches events and replays when latest incoming value equals a previous and the execution of the map took more time than the specified duration else produces new events.
     */
     public func map<T>(
-        cache: Persisting<Self.Output, T>,
+        cache: Persisting<Self.Output, Expiring<T>>,
         whenExceeding duration: DispatchTimeInterval,
-        input: @escaping (Self.Output) -> T
+        transform: @escaping (Self.Output) -> T
+    ) -> AnyPublisher<T, Self.Failure> {
+        map(
+            cache: cache,
+            whenExceeding: duration,
+            input: { 
+                Expiring(
+                    value: transform($0),
+                    expiration: nil
+                )
+            }
+        )
+    }
+
+    public func map<T>(
+        cache: Persisting<Self.Output, Expiring<T>>,
+        whenExceeding duration: DispatchTimeInterval,
+        input: @escaping (Self.Output) -> Expiring<T>
     ) -> AnyPublisher<T, Self.Failure> {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
-            value: Optional<T>.none
+            value: Optional<Expiring<T>>.none
         )) {
             if let _ = $0.cache.value($1) {
                 return (
@@ -47,8 +64,8 @@ extension Publisher where Self.Output: Hashable {
             }
         }
         .compactMap { (cache, key, value) in
-            value ??
-            key.flatMap { cache.value($0) }
+            value?.value ??
+            key.flatMap { cache.value($0).map(\.value) }
         }
         .eraseToAnyPublisher()
     }
@@ -57,12 +74,30 @@ extension Publisher where Self.Output: Hashable {
      Caches events and replays when latest incoming value equals a previous else produces new events.
      */
     public func map<T>(
-        cache: Persisting<Self.Output, T>,
+        cache: Persisting<Self.Output, Expiring<T>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> {
+        map(
+            cache: cache,
+            when: condition,
+            transform: {
+                Expiring(
+                    value: transform($0),
+                    expiration: nil
+                )
+            }
+        )
+    }
+
+    public func map<T>(
+        cache: Persisting<Self.Output, Expiring<T>>,
+        when condition: @escaping (Self.Output) -> Bool = { _ in true },
+        transform: @escaping (Self.Output) -> Expiring<T>
+    ) -> AnyPublisher<T, Self.Failure> {
         self
             .cachingOutput(of: transform, to: cache, when: condition)
+            .map(\.value)
             .eraseToAnyPublisher()
     }
 

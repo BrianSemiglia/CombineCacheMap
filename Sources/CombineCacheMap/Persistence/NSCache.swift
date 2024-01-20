@@ -2,9 +2,9 @@ import Foundation
 import Combine
 
 extension Persisting {
-    public static func memory<K, V>() -> Persisting<K, V> {
-        Persisting<K, V>(
-            backing:TypedCache<K, V>(),
+    public static func memory<K, V>() -> Persisting<K, Expiring<V>> {
+        Persisting<K, Expiring<V>>(
+            backing:TypedCache<K, Expiring<V>>(),
             set: { cache, value, key in
                 cache.setObject(
                     value,
@@ -12,7 +12,18 @@ extension Persisting {
                 )
             },
             value: { cache, key in
-                cache.object(forKey: key)
+                cache.object(forKey: key).flatMap { x -> Optional<Expiring<V>> in
+                    if let expiration = x.expiration {
+                        if let valid = expiration > Date() ? x : nil {
+                            return valid
+                        } else {
+                            cache.removeObject(forKey: key)
+                            return nil
+                        }
+                    } else {
+                        return x
+                    }
+                }
             },
             reset: { backing in
                 backing.removeAllObjects()

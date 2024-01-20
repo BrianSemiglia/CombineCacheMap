@@ -10,7 +10,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory()) { x in
+                .map(cache: .memory()) { x -> Int in
                     cacheMisses += 1
                     return x
                 }
@@ -27,14 +27,14 @@ final class CombineCacheMapTests: XCTestCase {
 
         // Separate cache instances are used but values are persisted between them.
 
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMissesInitial: Int = 0
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) { x -> Int in
                     cacheMissesInitial += 1
                     return x
                 }
@@ -63,6 +63,52 @@ final class CombineCacheMapTests: XCTestCase {
         )
     }
 
+    func testMapExpiration_Memory() {
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1] // expired, expired, valid, cached
+                .publisher
+                .map(cache: .memory()) { x in
+                    cacheMisses += 1
+                    return Expiring(
+                        value: cacheMisses,
+                        expiration: cacheMisses > 2
+                        ? Date() + 99
+                        : Date() - 1
+                    )
+                }
+                .toBlocking(),
+            [3, 3]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            3
+        )
+    }
+
+    func testMapExpiration_Disk() {
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1] // expired, expired, valid, cached
+                .publisher
+                .map(cache: .disk(id: "\(#function)")) { x in
+                    cacheMisses += 1
+                    return Expiring(
+                        value: cacheMisses,
+                        expiration: cacheMisses > 2 
+                            ? Date() + 99
+                            : Date() - 1
+                    )
+                }
+                .toBlocking(),
+            [3, 3]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            3
+        )
+    }
+
     func testMapReset_Memory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
@@ -79,7 +125,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapReset_Disk() {
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -372,7 +418,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapLatestExpiring_Disk() {
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cancellables: Set<AnyCancellable> = []
@@ -601,7 +647,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationAll_Disk() {
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -636,7 +682,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationSome_Disk() {
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -671,7 +717,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationNever_Disk() {
-        let cache = Persisting<Int, Int>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0

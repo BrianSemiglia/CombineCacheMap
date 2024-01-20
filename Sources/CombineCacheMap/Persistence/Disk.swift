@@ -8,13 +8,13 @@ extension Persisting {
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
     // For FlatMap refreshing after
-    public static func disk<T, E: Error>(
+    public static func disk<V, E: Error>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<Expiring<T>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<T>, E> {
-        Persisting<Key, AnyPublisher<Expiring<T>, Error>>(
+    ) -> Persisting<Key, AnyPublisher<Expiring<V>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<V>, E> {
+        Persisting<Key, AnyPublisher<Expiring<V>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Expiring<T>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Expiring<T>>]>(),
+                writes: TypedCache<String, AnyPublisher<Expiring<V>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Expiring<V>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -67,7 +67,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<T>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isExpired() || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -95,9 +95,9 @@ extension Persisting {
     }
 
     // For Map
-    public static func disk(
+    public static func disk<T>(
         id: String
-    ) -> Persisting<Key, Value> where Key: Codable, Value: Codable {
+    ) -> Persisting<Key, Value> where Key: Codable, Value == Expiring<T> {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
@@ -112,6 +112,18 @@ extension Persisting {
             value: { folder, key in
                 (try? Persisting.sha256Hash(for: key))
                     .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
+                    .flatMap { x in
+                        if let expiration = x?.expiration {
+                            if let valid = expiration > Date() ? x : nil {
+                                return valid
+                            } else {
+                                try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
+                                return nil
+                            }
+                        } else {
+                            return x
+                        }
+                    }
             },
             reset: { url in
                 try? FileManager.default.removeItem(
