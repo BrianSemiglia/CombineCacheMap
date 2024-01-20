@@ -224,7 +224,7 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
                 Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
             )
-            .cacheFlatMapLatest(cache: .memory()) { x in
+            .flatMapLatest(cache: .memory()) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
                     $0.send(x)
@@ -252,7 +252,7 @@ final class CombineCacheMapTests: XCTestCase {
                 Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
             )
             .setFailureType(to: Error.self)
-            .cacheFlatMapLatest(cache: cache) { x -> AnyPublisher<Int, Error> in
+            .flatMapLatest(cache: cache) { x -> AnyPublisher<Int, Error> in
                 AnyPublisher.create {
                     cacheMisses += 1
                     $0.send(x)
@@ -288,7 +288,7 @@ final class CombineCacheMapTests: XCTestCase {
             eventCount += 1
         })
         .setFailureType(to: Error.self)
-        .cacheFlatMapLatest(cache: .memory()) { x in
+        .flatMapLatest(cache: .memory()) { x in
             AnyPublisher.create {
                 cacheMisses += 1
                 $0.send(Expiring(value: x + cacheMisses, expiration: Date() + 4))
@@ -341,7 +341,7 @@ final class CombineCacheMapTests: XCTestCase {
             eventCount += 1
         })
         .setFailureType(to: Error.self)
-        .cacheFlatMapLatest(cache: .disk(id: "\(#function)")) { x in
+        .flatMapLatest(cache: .disk(id: "\(#function)")) { x in
             AnyPublisher.create {
                 cacheMisses += 1
                 $0.send(Expiring(value: x + cacheMisses, expiration: Date() + 4))
