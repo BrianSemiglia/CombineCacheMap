@@ -7,14 +7,14 @@ extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
-    // For FlatMap refreshing after
+    // For FlatMap
     public static func disk<V, E: Error>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<Expiring<V>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<V>, E> {
-        Persisting<Key, AnyPublisher<Expiring<V>, Error>>(
+    ) -> Persisting<Key, AnyPublisher<Caching<V>, Error>> where Key: Codable, Value == AnyPublisher<Caching<V>, E> {
+        Persisting<Key, AnyPublisher<Caching<V>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Expiring<V>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Expiring<V>>]>(),
+                writes: TypedCache<String, AnyPublisher<Caching<V>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Caching<V>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -41,13 +41,6 @@ extension Persisting {
                                     at: backing.disk.appendingPathExtension("\(key)")
                                 )
                             }
-                            .refreshingWhenExpired(with: write) {
-                                backing.writes.removeObject(forKey: key)
-                                backing.memory.removeObject(forKey: key)
-                                try? FileManager.default.removeItem(
-                                    at: backing.disk.appendingPathExtension("\(key)")
-                                )
-                            }
                             .eraseToAnyPublisher(),
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
@@ -67,7 +60,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Expiring<V>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Caching<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isExpired() || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -97,16 +90,18 @@ extension Persisting {
     // For Map
     public static func disk<T>(
         id: String
-    ) -> Persisting<Key, Value> where Key: Codable, Value == Expiring<T> {
+    ) -> Persisting<Key, Value> where Key: Codable, Value == Caching<T> {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
-                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                do {
-                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
-                } catch {
+                if value.shouldCache == true && value.isExpired == false {
+                    let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                    do {
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
+                    } catch {
 
+                    }
                 }
             },
             value: { folder, key in
@@ -162,16 +157,98 @@ private extension URL {
 }
 
 extension Collection {
-    func isExpired<T>() -> Bool where Element == WrappedEvent<Expiring<T>> {
-        switch first?.event {
-        case .value(let value):
-            if value.expiration.map({ $0 <= Date() }) ?? false {
-                return true
-            } else {
-                return false
+    
+    func isExpired<T>() -> Bool where Element == Caching<T> {
+        contains { $0.isExpired }
+    }
+
+    func isExpired<T, F: Error>() -> Bool where Element == CombineExt.Event<Caching<T>, F> {
+        compactMap {
+            switch $0.event {
+            case .value(let value):
+                switch value {
+                case .policy(_):
+                    return value
+                default:
+                    return nil
+                }
+            default: 
+                return nil
             }
-        default:
-            return false
+        }
+        .contains { $0.isExpired }
+    }
+
+    func shouldCache<T, F: Error>() -> Bool where Element == CombineExt.Event<Caching<T>, F> {
+        compactMap {
+            switch $0.event {
+            case .value(let value):
+                switch value {
+                case .policy(_):
+                    return value
+                default:
+                    return nil
+                }
+            default:
+                return nil
+            }
+        }
+        .contains { $0.shouldCache }
+    }
+
+    func isExpired<T>() -> Bool where Element == WrappedEvent<Caching<T>> {
+        compactMap {
+            switch $0.event {
+            case .value(let value):
+                switch value {
+                case .policy(_):
+                    return value
+                default:
+                    return nil
+                }
+            default:
+                return nil
+            }
+        }
+        .contains { $0.isExpired }
+    }
+
+    func shouldCache<T>() -> Bool where Element == WrappedEvent<Caching<T>> {
+        compactMap {
+            switch $0.event {
+            case .value(let value):
+                switch value {
+                case .policy(_):
+                    return value
+                default:
+                    return nil
+                }
+            default:
+                return nil
+            }
+        }
+        .contains { $0.shouldCache }
+    }
+}
+
+extension Caching {
+    var isExpired: Bool {
+        expiration.map { Date() >= $0 } ?? false
+    }
+
+    var shouldCache: Bool {
+        switch self {
+        case .policy(.never): return false
+        default: return true
+        }
+    }
+}
+
+extension Foo where P == [V] {
+    func isExpired(input: P) -> Bool {
+        switch validity(input) {
+        case .until(let date): return Date() < date
+        default: return false
         }
     }
 }
@@ -287,6 +364,29 @@ private extension Publisher {
                         .write(to: url.appendingPathComponent("\(key)"))
                 } catch {
 
+                }
+            })
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+
+    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == Caching<T> {
+        self
+            .materialize()
+            .collect()
+            .handleEvents(receiveOutput: { next in
+                if next.shouldCache() && next.isExpired() == false {
+                    do {
+                        try FileManager.default.createDirectory(
+                            at: url,
+                            withIntermediateDirectories: true
+                        )
+                        try JSONEncoder()
+                            .encode(next.map(WrappedEvent.init))
+                            .write(to: url.appendingPathComponent("\(key)"))
+                    } catch {
+
+                    }
                 }
             })
             .map { _ in () }

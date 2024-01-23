@@ -10,9 +10,9 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory()) { x -> Int in
+                .map(cache: .memory()) {
                     cacheMisses += 1
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -27,16 +27,16 @@ final class CombineCacheMapTests: XCTestCase {
 
         // Separate cache instances are used but values are persisted between them.
 
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMissesInitial: Int = 0
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .disk(id: "\(#function)")) { x -> Int in
+                .map(cache: .disk(id: "\(#function)")) {
                     cacheMissesInitial += 1
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -50,9 +50,9 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: .disk(id: "\(#function)")) {
                     cacheMissesSubsequent += 1
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -63,22 +63,66 @@ final class CombineCacheMapTests: XCTestCase {
         )
     }
 
+    func testMapAlways_Memory() {
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1]
+                .publisher
+                .map(cache: .memory()) { _ in
+                    cacheMisses += 1
+                    return Foo(
+                        value: cacheMisses + 1,
+                        validity: .always
+                    )
+                }
+                .toBlocking(),
+            [2, 2, 2, 2]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            1
+        )
+    }
+
+    func testMapNever_Memory() {
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1]
+                .publisher
+                .map(cache: .memory()) { _ in
+                    cacheMisses += 1
+                    return Foo(
+                        value: cacheMisses + 1,
+                        validity: .never
+                    )
+                }
+                .toBlocking(),
+            [2, 3, 4, 5]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            4
+        )
+    }
+
     func testMapExpiration_Memory() {
         var cacheMisses: Int = 0
         XCTAssertEqual(
             try? [1, 1, 1, 1] // expired, expired, valid, cached
                 .publisher
-                .map(cache: .memory()) { x in
+                .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Expiring(
+                    return Foo(
                         value: cacheMisses,
-                        expiration: cacheMisses > 2
-                        ? Date() + 99
-                        : Date() - 1
+                        validity: .until(
+                            cacheMisses > 2
+                            ? Date() + 99
+                            : Date() - 99
+                        )
                     )
                 }
                 .toBlocking(),
-            [3, 3]
+            [1, 2, 3, 3]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -87,21 +131,26 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapExpiration_Disk() {
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
+        cache.reset()
+
         var cacheMisses: Int = 0
         XCTAssertEqual(
             try? [1, 1, 1, 1] // expired, expired, valid, cached
                 .publisher
-                .map(cache: .disk(id: "\(#function)")) { x in
+                .map(cache: cache) { _ in
                     cacheMisses += 1
-                    return Expiring(
+                    return Foo(
                         value: cacheMisses,
-                        expiration: cacheMisses > 2 
+                        validity: .until(
+                            cacheMisses > 2
                             ? Date() + 99
-                            : Date() - 1
+                            : Date() - 99
+                        )
                     )
                 }
                 .toBlocking(),
-            [3, 3]
+            [1, 2, 3, 3]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -114,9 +163,9 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 2, 1, 3]
                 .publisher
-                .map(cache: .memory(), when: { $0 == 1 }) { x in
+                .map(cache: .memory(), when: { $0 == 1 }) {
                     cacheMisses += 1
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 2, 1, 3]
@@ -125,16 +174,16 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapReset_Disk() {
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             [1, 2, 1, 3]
                 .publisher
-                .map(cache: cache, when: { $0 == 1 }) { x in
+                .map(cache: cache, when: { $0 == 1 }) {
                     cacheMisses += 1
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 2, 1, 3]
@@ -148,7 +197,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1, 1]
                 .publisher
                 .flatMap(cache: .memory()) { x in
-                    AnyPublisher<Int, Error>.create {
+                    AnyPublisher.create {
                         cacheMisses += 1
                         $0.send(x)
                         $0.send(completion: .finished)
@@ -165,7 +214,7 @@ final class CombineCacheMapTests: XCTestCase {
 
         // Separate cache instances are used but values are persisted between them.
 
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         // NEW
@@ -231,7 +280,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .flatMap(cache: .memory()) { _ in
-                    AnyPublisher<String, Error>.create {
+                    AnyPublisher.create {
                         cacheMisses += 1
                         $0.send("1")
                         $0.send("2")
@@ -250,7 +299,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapMultiple_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Expiring<String>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<String>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -258,7 +307,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .flatMap(cache: cache) { _ in
-                    AnyPublisher<String, Error>.create {
+                    AnyPublisher.create {
                         cacheMisses += 1
                         $0.send("1")
                         $0.send("2")
@@ -282,7 +331,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 2, 1, 3]
                 .publisher
                 .flatMap(cache: .memory(), when: { $0 == 1 }) { x in
-                    AnyPublisher<Int, Error>.create {
+                    AnyPublisher.create {
                         cacheMisses += 1
                         $0.send(x)
                         $0.send(completion: .finished)
@@ -296,7 +345,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapReset_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -342,7 +391,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapLatest_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -390,10 +439,11 @@ final class CombineCacheMapTests: XCTestCase {
         .flatMapLatest(cache: .memory()) { x in
             AnyPublisher.create {
                 cacheMisses += 1
-                $0.send(Expiring(value: x + cacheMisses, expiration: Date() + 4))
+                $0.send(x + cacheMisses)
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
+            .cachingUntil { _ in Date() + 4 }
             .delay(for: .seconds(2), scheduler: testScheduler)
             .eraseToAnyPublisher()
         }
@@ -418,7 +468,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapLatestExpiring_Disk() {
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cancellables: Set<AnyCancellable> = []
@@ -442,10 +492,11 @@ final class CombineCacheMapTests: XCTestCase {
         .flatMapLatest(cache: .disk(id: "\(#function)")) { x in
             AnyPublisher.create {
                 cacheMisses += 1
-                $0.send(Expiring(value: x + cacheMisses, expiration: Date() + 4))
+                $0.send(x + cacheMisses)
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
+            .cachingUntil { _ in Date() + 4 }
             .delay(for: .seconds(2), scheduler: testScheduler)
             .eraseToAnyPublisher()
         }
@@ -480,10 +531,11 @@ final class CombineCacheMapTests: XCTestCase {
             .flatMap(cache: .memory()) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    $0.send(Expiring<Int>(value: x, expiration: Date() + 20))
+                    $0.send(x)
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
+                .cachingUntil { _ in Date() + 2000 }
             }
             .toBlocking(timeout: 4),
             [1, 1, 1]
@@ -492,7 +544,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapInvalidatingOnNever_Disk() {
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -505,10 +557,11 @@ final class CombineCacheMapTests: XCTestCase {
             .flatMap(cache: .disk(id: "\(#function)")) { x in
                 AnyPublisher.create {
                     cacheMisses += 1
-                    $0.send(Expiring(value: x, expiration: Date() + 20))
+                    $0.send(x)
                     $0.send(completion: .finished)
                     return AnyCancellable {}
                 }
+                .cachingUntil { _ in Date() + 20 }
             }
             .toBlocking(timeout: 4),
             [1, 1, 1]
@@ -517,7 +570,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapInvalidatingOnSome_Memory() throws {
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.memory()
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.memory()
         cache.reset()
 
         var cancellables: Set<AnyCancellable> = []
@@ -543,15 +596,11 @@ final class CombineCacheMapTests: XCTestCase {
         .flatMap(cache: cache) { x in
             AnyPublisher.create {
                 cacheMisses += 1
-                $0.send(
-                    Expiring(
-                        value: eventCount > 4 ? x + 1: x,
-                        expiration: Date() + 2
-                    )
-                )
+                $0.send(eventCount > 4 ? x + 1: x)
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
+            .cachingUntil { _ in Date() + 2 }
             .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
@@ -574,7 +623,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testFlatMapInvalidatingOnSome_Disk() throws {
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cancellables: Set<AnyCancellable> = []
@@ -600,15 +649,11 @@ final class CombineCacheMapTests: XCTestCase {
         .flatMap(cache: cache) { x in
             AnyPublisher.create {
                 cacheMisses += 1
-                $0.send(
-                    Expiring(
-                        value: eventCount > 4 ? x + 1: x,
-                        expiration: Date() + 2
-                    )
-                )
+                $0.send(eventCount > 4 ? x + 1: x)
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
+            .cachingUntil { _ in Date() + 2 }
             .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
@@ -635,10 +680,10 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory(), whenExceeding: .seconds(1)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(1)) {
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 2)
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -647,17 +692,17 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationAll_Disk() {
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(1)) { x in
+                .map(cache: cache, whenExceeding: .seconds(1)) {
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 2)
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -670,10 +715,10 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .map(cache: .memory(), whenExceeding: .seconds(2)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(2)) {
                     cacheMisses += 1
-                    Thread.sleep(forTimeInterval: TimeInterval(x))
-                    return x
+                    Thread.sleep(forTimeInterval: TimeInterval($0))
+                    return $0
                 }
                 .toBlocking(timeout: 7),
             [3, 1, 3]
@@ -682,17 +727,17 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationSome_Disk() {
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(2)) { x in
+                .map(cache: cache, whenExceeding: .seconds(2)) {
                     cacheMisses += 1
-                    Thread.sleep(forTimeInterval: TimeInterval(x))
-                    return x
+                    Thread.sleep(forTimeInterval: TimeInterval($0))
+                    return $0
                 }
                 .toBlocking(timeout: 7),
             [3, 1, 3]
@@ -705,10 +750,10 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory(), whenExceeding: .seconds(2)) { x in
+                .map(cache: .memory(), whenExceeding: .seconds(2)) {
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 1)
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -717,17 +762,17 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapWhenExceedingDurationNever_Disk() {
-        let cache = Persisting<Int, Expiring<Int>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, Caching<Int>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(2)) { x in
+                .map(cache: cache, whenExceeding: .seconds(2)) {
                     cacheMisses += 1
                     Thread.sleep(forTimeInterval: 1)
-                    return x
+                    return $0
                 }
                 .toBlocking(),
             [1, 1]
@@ -738,7 +783,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldIgnoreCachedErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Error>> = .memory().adding(
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.memory().adding(
             key: 1,
             value: .create {
                 $0.send(completion: .failure(Foo()))
@@ -770,12 +815,12 @@ final class CombineCacheMapTests: XCTestCase {
         struct Foo: Error {}
 
         let id = "\(#function)"
-        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Error>> = .disk(id: id)
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: id)
         cache.reset()
         cache.persistToDisk(
             id: id,
             key: 1,
-            item: AnyPublisher<Expiring<Int>, Error>.create {
+            item: AnyPublisher<Caching<Int>, Error>.create {
                 $0.send(completion: .failure(Foo()))
                 return AnyCancellable {}
             }
@@ -804,7 +849,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldNotCacheErrors_Memory() {
         struct Foo: Error {}
 
-        let cache: Persisting<Int, AnyPublisher<Expiring<Int>, Error>> = .memory()
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.memory()
 
         // 1. Attempt to persist error
         XCTAssertEqual(
@@ -835,7 +880,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testShouldNotCacheErrors_Disk() {
         struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Foo>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         // 1. Attempt to persist error
@@ -867,7 +912,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testErrorHandler_Memory() {
         struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.memory()
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.memory()
         cache.reset()
 
         var cacheMisses = 0
@@ -878,7 +923,7 @@ final class CombineCacheMapTests: XCTestCase {
                     cacheMisses += 1
                     return Fail(error: Foo())
                         .eraseToAnyPublisher()
-                        .notCachingOn { error in 99 }
+                        .replacingErrorsWithUncached { error in Just(99).setFailureType(to: Error.self).eraseToAnyPublisher() }
                 }
                 .toBlocking(timeout: 10),
             [99, 99, 99]
@@ -889,7 +934,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testErrorHandler_Disk() {
         struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<Expiring<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<Caching<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses = 0
@@ -900,11 +945,60 @@ final class CombineCacheMapTests: XCTestCase {
                     cacheMisses += 1
                     return Fail<Int, Error>(error: Foo())
                         .eraseToAnyPublisher()
-                        .notCachingOn { error in 99 }
+                        .replacingErrorsWithUncached { error in Just(99).setFailureType(to: Error.self).eraseToAnyPublisher() }
                 }
                 .toBlocking(timeout: 10),
             [99, 99, 99]
         )
         XCTAssertEqual(cacheMisses, 3)
     }
+
+    func compilationTest() {
+        var cancellables: Set<AnyCancellable> = []
+        ["0"]
+            .publisher
+            .map(cache: .memory()) { $0 }
+            .sink { _ in }.store(in: &cancellables)
+        ["0"]
+            .publisher
+            .map(cache: .disk(id: "")) { $0 }
+            .sink { _ in }.store(in: &cancellables)
+        ["0"]
+            .publisher
+            .flatMap(cache: .memory()) {
+                Just($0)
+                    .setFailureType(to: Error.self)
+                    .eraseToAnyPublisher()
+            }
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            .store(in: &cancellables)
+        ["0"]
+            .publisher
+            .flatMap(cache: .disk(id: "")) {
+                Just($0)
+                    .setFailureType(to: Error.self)
+                    .eraseToAnyPublisher()
+            }
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            .store(in: &cancellables)
+        ["0"]
+            .publisher
+            .flatMapLatest(cache: .memory()) {
+                Just($0)
+                    .setFailureType(to: Error.self)
+                    .eraseToAnyPublisher()
+            }
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            .store(in: &cancellables)
+        ["0"]
+            .publisher
+            .flatMapLatest(cache: .disk(id: "")) {
+                Just($0)
+                    .setFailureType(to: Error.self)
+                    .eraseToAnyPublisher()
+            }
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            .store(in: &cancellables)
+    }
 }
+

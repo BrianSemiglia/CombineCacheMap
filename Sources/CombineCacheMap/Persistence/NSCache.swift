@@ -1,25 +1,22 @@
 import Foundation
 import Combine
+import CombineExt
 
 extension Persisting {
-    public static func memory<K, V>() -> Persisting<K, Expiring<V>> {
-        Persisting<K, Expiring<V>>(
-            backing:TypedCache<K, Expiring<V>>(),
+
+    public static func memory<K, V>() -> Persisting<K, Caching<V>> {
+        Persisting<K, Caching<V>>(
+            backing:TypedCache<K, Caching<V>>(),
             set: { cache, value, key in
-                cache.setObject(
-                    value,
-                    forKey: key
-                )
+                if value.isExpired == false && value.shouldCache {
+                    cache.setObject(
+                        value,
+                        forKey: key
+                    )
+                }
             },
             value: { cache, key in
-                cache.object(forKey: key).flatMap { x -> Optional<Expiring<V>> in
-                    if x.isExpired {
-                        cache.removeObject(forKey: key)
-                        return nil
-                    } else {
-                        return x
-                    }
-                }
+                cache.object(forKey: key)
             },
             reset: { backing in
                 backing.removeAllObjects()
@@ -27,11 +24,11 @@ extension Persisting {
         )
     }
 
-    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<Expiring<T>, Error>> where Key: Codable, Value == AnyPublisher<Expiring<T>, E> {
-        Persisting<Key, AnyPublisher<Expiring<T>, Error>>(
+    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<Caching<T>, Error>> where Key: Codable, Value == AnyPublisher<Caching<T>, E> {
+        Persisting<Key, AnyPublisher<Caching<T>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Expiring<T>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Expiring<T>>]>()
+                writes: TypedCache<String, AnyPublisher<Caching<T>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Caching<T>>]>()
             ),
             set: { backing, value, key in
                 backing.writes.setObject(
@@ -54,18 +51,15 @@ extension Persisting {
                                 backing.writes.removeObject(forKey: key)
                                 backing.memory.removeObject(forKey: key)
                             }
-                            .refreshingWhenExpired(with: write) {
-                                backing.writes.removeObject(forKey: key)
-                                backing.memory.removeObject(forKey: key)
-                            }
                             .eraseToAnyPublisher(),
                         shared
                             .materialize()
                             .collect()
                             .handleEvents(receiveOutput: { next in
-                                backing.memory.setObject(next.map(WrappedEvent.init), forKey: key)
+                                if next.shouldCache() && next.isExpired() == false {
+                                    backing.memory.setObject(next.map(WrappedEvent.init), forKey: key)
+                                }
                             })
-                            .map { _ in () }
                             .setFailureType(to: Error.self)
                             .flatMap { _ in Empty() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
