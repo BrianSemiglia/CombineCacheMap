@@ -170,54 +170,28 @@ extension Caching {
     }
 
     func publisher<O, E: Error>() -> AnyPublisher<CachingEvent<O>, E> where V == AnyPublisher<O, E>, P == [V.Output], V.Output: Codable, O: Codable {
-        let shared = value.multicast(subject: UnboundReplaySubject())
-        var cancellable: Cancellable? = nil
-        var completions = 0
-
-        let recorder: AnyPublisher<CachingEvent<O>, E> = shared
-            .collect()
-            .map { CachingEvent.policy(validity($0)) }
-            .handleEvents(receiveCompletion: { _ in
-                completions += 1
-                if completions == 2 {
-                    cancellable?.cancel()
-                    cancellable = nil
-                }
-            })
-            .eraseToAnyPublisher()
-
-        let live = shared
-            .map { CachingEvent.value($0) }
-            .handleEvents(receiveCompletion: { _ in
-                completions += 1
-                if completions == 2 {
-                    cancellable?.cancel()
-                    cancellable = nil
-                }
-            })
-            .eraseToAnyPublisher()
-
-        cancellable = shared.connect()
-
-        return Publishers.Concatenate(
-            prefix: live,
-            suffix: recorder
-        )
-        .eraseToAnyPublisher()
+        value.asCachingEventsWith(validity: { validity($0) })
     }
 }
 
 extension Publisher {
 
     func cachingUntil(condition: @escaping ([Output]) -> Date) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
+        asCachingEventsWith(validity: { .until(condition($0)) })
+    }
 
+    func cachingWhen(condition: @escaping ([Output]) -> Bool) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
+        asCachingEventsWith(validity: { condition($0) ? .always : .never })
+    }
+
+    func asCachingEventsWith(validity: @escaping ([Output]) -> Span) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
         let shared = multicast(subject: UnboundReplaySubject())
         var cancellable: Cancellable? = nil
         var completions = 0
 
         let recorder: AnyPublisher<CachingEvent<Output>, Failure> = shared
             .collect()
-            .map { CachingEvent.policy(.until(condition($0))) }
+            .map { CachingEvent.policy(validity($0)) }
             .handleEvents(receiveCompletion: { _ in
                 completions += 1
                 if completions == 2 {

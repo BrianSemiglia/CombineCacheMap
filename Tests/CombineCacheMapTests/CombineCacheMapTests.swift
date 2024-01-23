@@ -366,6 +366,66 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 3)
     }
 
+    func testFlatMapCachingWhen_Disk() {
+        let cache = Persisting<Int, AnyPublisher<CachingEvent<String>, Error>>.disk(id: "\(#function)")
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .flatMap(cache: cache) { _ in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        $0.send("1")
+                        $0.send("2")
+                        $0.send("3")
+                        $0.send("4")
+                        $0.send("5")
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWhen {
+                        $0.count == 5
+                    }
+                }
+                .reduce("", +)
+                .toBlocking(),
+            ["1234512345"]
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testFlatMapCachingNotWhen_Disk() {
+        let cache = Persisting<Int, AnyPublisher<CachingEvent<String>, Error>>.disk(id: "\(#function)")
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1]
+                .publisher
+                .flatMap(cache: cache) { _ in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        $0.send("1")
+                        $0.send("2")
+                        $0.send("3")
+                        $0.send("4")
+                        $0.send("5")
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWhen {
+                        $0.count != 5
+                    }
+                }
+                .reduce("", +)
+                .toBlocking(),
+            ["1234512345"]
+        )
+        XCTAssertEqual(cacheMisses, 2)
+    }
+
     func testFlatMapLatest_Memory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
