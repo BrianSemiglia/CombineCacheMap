@@ -4,9 +4,9 @@ import CombineExt
 
 extension Persisting {
 
-    public static func memory<K, V>() -> Persisting<K, Caching<V>> {
-        Persisting<K, Caching<V>>(
-            backing:TypedCache<K, Caching<V>>(),
+    public static func memory<K, V>() -> Persisting<K, CachingEvent<V>> {
+        Persisting<K, CachingEvent<V>>(
+            backing:TypedCache<K, CachingEvent<V>>(),
             set: { cache, value, key in
                 if value.isExpired == false && value.shouldCache {
                     cache.setObject(
@@ -24,11 +24,11 @@ extension Persisting {
         )
     }
 
-    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<Caching<T>, Error>> where Key: Codable, Value == AnyPublisher<Caching<T>, E> {
-        Persisting<Key, AnyPublisher<Caching<T>, Error>>(
+    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<CachingEvent<T>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<T>, E> {
+        Persisting<Key, AnyPublisher<CachingEvent<T>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Caching<T>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Caching<T>>]>()
+                writes: TypedCache<String, AnyPublisher<CachingEvent<T>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<CachingEvent<T>>]>()
             ),
             set: { backing, value, key in
                 backing.writes.setObject(

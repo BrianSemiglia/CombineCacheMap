@@ -9,7 +9,7 @@ extension Publisher {
     Caches events and replays when latest incoming value equals a previous and the execution of the map took more time than the specified duration else produces new events.
     */
     public func map<T>(
-        cache: Persisting<Self.Output, Foo<T, [T]>>,
+        cache: Persisting<Self.Output, Caching<T, [T]>>,
         whenExceeding duration: DispatchTimeInterval,
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> {
@@ -17,7 +17,7 @@ extension Publisher {
             cache: cache,
             whenExceeding: duration,
             input: { 
-                Foo(
+                Caching(
                     value: transform($0),
                     validity: .always
                 )
@@ -26,26 +26,26 @@ extension Publisher {
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Caching<T>>,
+        cache: Persisting<Self.Output, CachingEvent<T>>,
         whenExceeding duration: DispatchTimeInterval,
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> {
         map(
             cache: cache,
             whenExceeding: duration,
-            input: { Caching.value(transform($0)) }
+            input: { CachingEvent.value(transform($0)) }
         )
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Foo<T, [T]>>,
+        cache: Persisting<Self.Output, Caching<T, [T]>>,
         whenExceeding duration: DispatchTimeInterval,
-        input: @escaping (Self.Output) -> Foo<T, [T]>
+        input: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Self.Failure> {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
-            value: Optional<Foo<T, [T]>>.none
+            value: Optional<Caching<T, [T]>>.none
         )) {
             if let _ = $0.cache.value($1) {
                 return (
@@ -83,14 +83,14 @@ extension Publisher {
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Caching<T>>,
+        cache: Persisting<Self.Output, CachingEvent<T>>,
         whenExceeding duration: DispatchTimeInterval,
-        input: @escaping (Self.Output) -> Caching<T>
+        input: @escaping (Self.Output) -> CachingEvent<T>
     ) -> AnyPublisher<T, Self.Failure> {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
-            value: Optional<Caching<T>>.none
+            value: Optional<CachingEvent<T>>.none
         )) {
             if let _ = $0.cache.value($1) {
                 return (
@@ -132,7 +132,7 @@ extension Publisher {
      */
 
     public func map<T>(
-        cache: Persisting<Self.Output, Caching<T>>,
+        cache: Persisting<Self.Output, CachingEvent<T>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
@@ -144,21 +144,21 @@ extension Publisher {
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Foo<T, [T]>>,
+        cache: Persisting<Self.Output, Caching<T, [T]>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         map(
             cache: cache,
             when: condition,
-            transform: { Foo(value: transform($0), validity: .always) }
+            transform: { Caching(value: transform($0), validity: .always) }
         )
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Caching<T>>,
+        cache: Persisting<Self.Output, CachingEvent<T>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> Caching<T>
+        transform: @escaping (Self.Output) -> CachingEvent<T>
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         self
             .cachingOutput(of: transform, to: cache, when: condition)
@@ -167,9 +167,9 @@ extension Publisher {
     }
 
     public func map<T>(
-        cache: Persisting<Self.Output, Foo<T, [T]>>,
+        cache: Persisting<Self.Output, Caching<T, [T]>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> Foo<T, [T]>
+        transform: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         self
             .cachingOutput(of: transform, to: cache, when: condition)
@@ -178,9 +178,9 @@ extension Publisher {
     }
 
     public func map<T: Codable>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, Error>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, Error>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> Foo<T, [T]>
+        transform: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
 
         self
@@ -190,14 +190,14 @@ extension Publisher {
             .scan((
                 cache: cache,
                 key: Optional<Self.Output>.none,
-                value: Optional<AnyPublisher<Caching<T>, Error>>.none
+                value: Optional<AnyPublisher<CachingEvent<T>, Error>>.none
             )) {(
                 cache: condition($1) == false ? $0.cache : $0.cache.adding(
                     key: $1,
-                    value: transform($1).publisher() as AnyPublisher<Caching<T>, Error>
+                    value: transform($1).publisher() as AnyPublisher<CachingEvent<T>, Error>
                 ),
                 key: $1,
-                value: condition($1) ? nil : transform($1).publisher() as AnyPublisher<Caching<T>, Error>
+                value: condition($1) ? nil : transform($1).publisher() as AnyPublisher<CachingEvent<T>, Error>
             )}
             .eraseToAnyPublisher()
             .compactMap { (cache, key, value) in
@@ -214,7 +214,7 @@ extension Publisher {
      */
 
     public func flatMap<T, E: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, E>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, E>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<T, E>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
@@ -222,7 +222,7 @@ extension Publisher {
             cache: cache,
             when: condition,
             transform: {
-                Foo(
+                Caching(
                     value: transform($0),
                     validity: { _ in .always }
                 )
@@ -237,9 +237,9 @@ extension Publisher {
      */
 
     public func flatMap<T, B: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, B>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> AnyPublisher<Caching<T>, B>
+        transform: @escaping (Self.Output) -> AnyPublisher<CachingEvent<T>, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
             .cachingOutput(of: transform, to: cache, when: condition)
@@ -250,9 +250,9 @@ extension Publisher {
     }
 
     public func flatMap<T, B: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, B>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> Foo<AnyPublisher<T, B>, [T]>
+        transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self.flatMap(
             cache: cache,
@@ -267,7 +267,7 @@ extension Publisher {
      */
 
     public func flatMapLatest<T, B: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, B>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<T, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
@@ -276,15 +276,15 @@ extension Publisher {
                 cache: cache,
                 when: condition,
                 transform: {
-                    Foo(value: transform($0), validity: { _ in .always }).publisher()
+                    Caching(value: transform($0), validity: { _ in .always }).publisher()
                 }
             )
     }
 
     public func flatMapLatest<T, B: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, B>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> AnyPublisher<Caching<T>, B>
+        transform: @escaping (Self.Output) -> AnyPublisher<CachingEvent<T>, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
             .cachingOutput(of: transform, to: cache, when: condition)
@@ -295,9 +295,9 @@ extension Publisher {
     }
 
     public func flatMapLatest<T, B: Error>(
-        cache: Persisting<Self.Output, AnyPublisher<Caching<T>, B>>,
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         when condition: @escaping (Self.Output) -> Bool = { _ in true },
-        transform: @escaping (Self.Output) -> Foo<AnyPublisher<T, B>, [T]>
+        transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self.flatMapLatest(
             cache: cache,

@@ -10,11 +10,11 @@ extension Persisting {
     // For FlatMap
     public static func disk<V, E: Error>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<Caching<V>, Error>> where Key: Codable, Value == AnyPublisher<Caching<V>, E> {
-        Persisting<Key, AnyPublisher<Caching<V>, Error>>(
+    ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, E> {
+        Persisting<Key, AnyPublisher<CachingEvent<V>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<Caching<V>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Caching<V>>]>(),
+                writes: TypedCache<String, AnyPublisher<CachingEvent<V>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<CachingEvent<V>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -60,7 +60,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Caching<V>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<CachingEvent<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isExpired() || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -90,7 +90,7 @@ extension Persisting {
     // For Map
     public static func disk<T>(
         id: String
-    ) -> Persisting<Key, Value> where Key: Codable, Value == Caching<T> {
+    ) -> Persisting<Key, Value> where Key: Codable, Value == CachingEvent<T> {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
@@ -158,11 +158,11 @@ private extension URL {
 
 extension Collection {
     
-    func isExpired<T>() -> Bool where Element == Caching<T> {
+    func isExpired<T>() -> Bool where Element == CachingEvent<T> {
         contains { $0.isExpired }
     }
 
-    func isExpired<T, F: Error>() -> Bool where Element == CombineExt.Event<Caching<T>, F> {
+    func isExpired<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -179,7 +179,7 @@ extension Collection {
         .contains { $0.isExpired }
     }
 
-    func shouldCache<T, F: Error>() -> Bool where Element == CombineExt.Event<Caching<T>, F> {
+    func shouldCache<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -196,7 +196,7 @@ extension Collection {
         .contains { $0.shouldCache }
     }
 
-    func isExpired<T>() -> Bool where Element == WrappedEvent<Caching<T>> {
+    func isExpired<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -213,7 +213,7 @@ extension Collection {
         .contains { $0.isExpired }
     }
 
-    func shouldCache<T>() -> Bool where Element == WrappedEvent<Caching<T>> {
+    func shouldCache<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -231,7 +231,7 @@ extension Collection {
     }
 }
 
-extension Caching {
+extension CachingEvent {
     var isExpired: Bool {
         expiration.map { Date() >= $0 } ?? false
     }
@@ -244,7 +244,7 @@ extension Caching {
     }
 }
 
-extension Foo where P == [V] {
+extension Caching where P == [V] {
     func isExpired(input: P) -> Bool {
         switch validity(input) {
         case .until(let date): return Date() < date
@@ -370,7 +370,7 @@ private extension Publisher {
             .eraseToAnyPublisher()
     }
 
-    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == Caching<T> {
+    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == CachingEvent<T> {
         self
             .materialize()
             .collect()
