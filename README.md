@@ -6,28 +6,40 @@ Cache/memoize the output of `Combine.Publishers`. Also available for RxSwift: ht
 
 ## Usage
 
-Aside from caching, all functions work like their non-cache Combine-counterparts.
+Aside from caching, all functions work like their non-cache Combine-counterparts. Persisting to disk requires that publisher output be `Codable`.
 
 ```swift
-events.cacheMap { x -> Value in
+events.map(cache: .memory()) { x -> Value in
     // Closure executed once per unique `x`, replayed when not unique.
     expensiveOperation(x)
 }
 
-events.cacheMap(whenExceeding: .seconds(1)) { x -> Value in
-    // Closure executed once per unique `x`, replayed when operation of unique value took 
+events.map(cache: .memory(), whenExceeding: .seconds(1)) { x -> Value in
+    // Replayed when operation of unique value takes 
     // longer than specified duration.
     expensiveOperation(x)
 }
 
-events.cacheFlatMap(cache: .memoryRefreshingAfter()) { x -> AnyPublisher<Expiring<Value>, Failure> in
-    // Closure executed once per unique `x`, replayed when input not unique. Cache 
-    // invalidated when date returned is greater than or equal to date of map execution.
-    expensiveOperation(x).map { output in 
-        Expiring(
-            value: output,
-            expiration: Date() + hours(1)
-        )
+// Conditional caching
+
+events.flatMap(cache: .disk(id: "foo")) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
+    // Replayed when input not unique and output not expired
+    expensiveOperationPublisher(x).cachingUntil { outputOnceComplete in
+        Date() + hours(1)
+    }
+}
+
+events.flatMap(cache: .memory()) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
+    // Replayed when input not unique and output qualifies
+    expensiveOperationPublisher(x).cachingWhen { outputOnceComplete in
+        return true
+    }
+}
+
+events.flatMap(cache: .memory()) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
+    // Errors are not cached. Replaced errors are also not cached.
+    expensiveOperationPublisher(x).replacingErrorsWithUncached { error in
+        return Just(...)
     }
 }
 
