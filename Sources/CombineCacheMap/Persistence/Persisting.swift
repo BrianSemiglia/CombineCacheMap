@@ -46,60 +46,6 @@ extension Persisting {
     }
 }
 
-extension Publisher {
-    
-    func refreshingWhenExpired<T>(
-        with refresher: AnyPublisher<Self.Output, Self.Failure>,
-        didExpire: @escaping () -> Void = {}
-    ) -> AnyPublisher<Self.Output, Self.Failure> where Self.Output == CachingEvent<T> {
-
-        var latestExpiration = Date(timeIntervalSince1970: 0)
-        var latestPublisher: AnyPublisher<Self.Output, Self.Failure>?
-
-        return flatMap { next in
-            if let x = next.expiration {
-                latestExpiration = latestExpiration > x ? latestExpiration : x
-                if Date() < latestExpiration {
-                    latestPublisher = latestPublisher ?? Just(next)
-                        .setFailureType(to: Self.Failure.self)
-                        .eraseToAnyPublisher()
-                    return latestPublisher!
-                } else {
-                    latestPublisher = refresher
-                        .handleEvents(receiveOutput: {
-                            latestExpiration = $0.expiration ?? latestExpiration
-                        })
-                        .flatMap { next in
-                            Just(next)
-                                .setFailureType(to: Self.Failure.self)
-                                .eraseToAnyPublisher()
-                        }
-                        .eraseToAnyPublisher()
-                    didExpire()
-                    return latestPublisher!
-                }
-            } else {
-                return Just(next)
-                    .setFailureType(to: Self.Failure.self)
-                    .eraseToAnyPublisher()
-            }
-        }
-        .eraseToAnyPublisher()
-    }
-
-    func onError(
-        handler: @escaping () -> Void
-    ) -> AnyPublisher<Self.Output, Self.Failure> {
-        handleEvents(receiveCompletion: { next in
-            switch next {
-            case .failure: handler()
-            default: break
-            }
-        })
-        .eraseToAnyPublisher()
-    }
-}
-
 struct TypedCache<Key, Value> {
     private let storage = NSCache<AnyObject, AnyObject>()
     func object(forKey key: Key) -> Value? {
@@ -122,7 +68,7 @@ public enum Span: Codable, Hashable {
     case never
 }
 
-public enum CachingEvent<T>: Codable, Hashable where T: Codable, T: Hashable {
+public enum CachingEvent<T>: Codable where T: Codable {
     case value(T)
     case policy(Span)
 }
@@ -176,11 +122,11 @@ extension Caching {
 
 extension Publisher {
 
-    func cachingUntil(condition: @escaping ([Output]) -> Date) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
+    public func cachingUntil(condition: @escaping ([Output]) -> Date) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
         asCachingEventsWith(validity: { .until(condition($0)) })
     }
 
-    func cachingWhen(condition: @escaping ([Output]) -> Bool) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
+    public func cachingWhen(condition: @escaping ([Output]) -> Bool) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
         asCachingEventsWith(validity: { condition($0) ? .always : .never })
     }
 

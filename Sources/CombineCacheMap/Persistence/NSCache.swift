@@ -46,12 +46,7 @@ extension Persisting {
                     let shared = write.replayingIndefinitely
 
                     return Publishers.Merge(
-                        shared
-                            .onError {
-                                backing.writes.removeObject(forKey: key)
-                                backing.memory.removeObject(forKey: key)
-                            }
-                            .eraseToAnyPublisher(),
+                        shared,
                         shared
                             .materialize()
                             .collect()

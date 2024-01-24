@@ -332,14 +332,6 @@ extension Publisher {
 }
 
 extension Publisher {
-    var deffered: Deferred<Self> {
-        Deferred {
-            self
-        }
-    }
-}
-
-extension Publisher {
     var replayingIndefinitely: AnyPublisher<Self.Output, Self.Failure> {
         self
             .multicast(subject: UnboundReplaySubject())

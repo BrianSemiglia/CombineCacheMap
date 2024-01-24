@@ -7,7 +7,6 @@ extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
-    // For FlatMap
     public static func disk<V, E: Error>(
         id: String
     ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, E> {
@@ -33,15 +32,7 @@ extension Persisting {
                     let shared = write.replayingIndefinitely
 
                     return Publishers.Merge(
-                        shared
-                            .onError {
-                                backing.writes.removeObject(forKey: key)
-                                backing.memory.removeObject(forKey: key)
-                                try? FileManager.default.removeItem(
-                                    at: backing.disk.appendingPathExtension("\(key)")
-                                )
-                            }
-                            .eraseToAnyPublisher(),
+                        shared,
                         shared
                             .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
                             .setFailureType(to: Error.self)
@@ -87,7 +78,6 @@ extension Persisting {
         )
     }
 
-    // For Map
     public static func disk<T>(
         id: String
     ) -> Persisting<Key, Value> where Key: Codable, Value == CachingEvent<T> {
