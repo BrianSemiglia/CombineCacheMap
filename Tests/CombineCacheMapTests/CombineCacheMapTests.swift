@@ -158,39 +158,6 @@ final class CombineCacheMapTests: XCTestCase {
         )
     }
 
-    func testMapReset_Memory() {
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 2, 1, 3]
-                .publisher
-                .map(cache: .memory(), when: { $0 == 1 }) {
-                    cacheMisses += 1
-                    return $0
-                }
-                .toBlocking(),
-            [1, 2, 1, 3]
-        )
-        XCTAssertEqual(cacheMisses, 3)
-    }
-
-    func testMapReset_Disk() {
-        let cache = Persisting<Int, CachingEvent<Int>>.disk(id: "\(#function)")
-        cache.reset()
-
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 2, 1, 3]
-                .publisher
-                .map(cache: cache, when: { $0 == 1 }) {
-                    cacheMisses += 1
-                    return $0
-                }
-                .toBlocking(),
-            [1, 2, 1, 3]
-        )
-        XCTAssertEqual(cacheMisses, 3)
-    }
-
     func testFlatMapSingle_Memory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
@@ -323,47 +290,6 @@ final class CombineCacheMapTests: XCTestCase {
             ["1234512345"]
         )
         XCTAssertEqual(cacheMisses, 1)
-    }
-
-    func testFlatMapReset_Memory() {
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 2, 1, 3]
-                .publisher
-                .flatMap(cache: .memory(), when: { $0 == 1 }) { x in
-                    AnyPublisher.create {
-                        cacheMisses += 1
-                        $0.send(x)
-                        $0.send(completion: .finished)
-                        return AnyCancellable {}
-                    }
-                }
-                .toBlocking(),
-            [1, 2, 1, 3]
-        )
-        XCTAssertEqual(cacheMisses, 3)
-    }
-
-    func testFlatMapReset_Disk() {
-        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Error>>.disk(id: "\(#function)")
-        cache.reset()
-
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 2, 1, 2]
-                .publisher
-                .flatMap(cache: cache, when: { $0 == 1 }) { x in
-                    AnyPublisher.create {
-                        cacheMisses += 1
-                        $0.send(x)
-                        $0.send(completion: .finished)
-                        return AnyCancellable {}
-                    }
-                }
-                .toBlocking(),
-            [1, 2, 1, 2]
-        )
-        XCTAssertEqual(cacheMisses, 3)
     }
 
     func testFlatMapCachingWhen_Disk() {

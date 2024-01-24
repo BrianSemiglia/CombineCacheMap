@@ -133,53 +133,46 @@ extension Publisher {
 
     public func map<T>(
         cache: Persisting<Self.Output, CachingEvent<T>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         map(
             cache: cache,
-            when: condition,
             transform: { .value(transform($0)) }
         )
     }
 
     public func map<T>(
         cache: Persisting<Self.Output, Caching<T, [T]>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> T
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         map(
             cache: cache,
-            when: condition,
             transform: { Caching(value: transform($0), validity: .always) }
         )
     }
 
     public func map<T>(
         cache: Persisting<Self.Output, CachingEvent<T>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> CachingEvent<T>
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         self
-            .cachingOutput(of: transform, to: cache, when: condition)
+            .cachingOutput(of: transform, to: cache)
             .compactMap(\.value)
             .eraseToAnyPublisher()
     }
 
     public func map<T>(
         cache: Persisting<Self.Output, Caching<T, [T]>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
         self
-            .cachingOutput(of: transform, to: cache, when: condition)
+            .cachingOutput(of: transform, to: cache)
             .map(\.value)
             .eraseToAnyPublisher()
     }
 
     public func map<T: Codable>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, Error>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
 
@@ -192,12 +185,12 @@ extension Publisher {
                 key: Optional<Self.Output>.none,
                 value: Optional<AnyPublisher<CachingEvent<T>, Error>>.none
             )) {(
-                cache: condition($1) == false ? $0.cache : $0.cache.adding(
+                cache: $0.cache.adding(
                     key: $1,
                     value: transform($1).publisher() as AnyPublisher<CachingEvent<T>, Error>
                 ),
                 key: $1,
-                value: condition($1) ? nil : transform($1).publisher() as AnyPublisher<CachingEvent<T>, Error>
+                value: nil
             )}
             .eraseToAnyPublisher()
             .compactMap { (cache, key, value) in
@@ -215,12 +208,10 @@ extension Publisher {
 
     public func flatMap<T, E: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, E>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<T, E>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         flatMap(
             cache: cache,
-            when: condition,
             transform: {
                 Caching(
                     value: transform($0),
@@ -238,11 +229,10 @@ extension Publisher {
 
     public func flatMap<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<CachingEvent<T>, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
-            .cachingOutput(of: transform, to: cache, when: condition)
+            .cachingOutput(of: transform, to: cache)
             .mapError { $0 as Error }
             .map { $0.compactMap(\.value).mapError { $0 as Error } }
             .flatMap { $0 }
@@ -251,12 +241,10 @@ extension Publisher {
 
     public func flatMap<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self.flatMap(
             cache: cache,
-            when: condition,
             transform: { transform($0).publisher() }
         )
     }
@@ -268,14 +256,12 @@ extension Publisher {
 
     public func flatMapLatest<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<T, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
             .flatMapLatest(
                 cache: cache,
-                when: condition,
-                transform: {
+                    transform: {
                     Caching(value: transform($0), validity: { _ in .always }).publisher()
                 }
             )
@@ -283,11 +269,10 @@ extension Publisher {
 
     public func flatMapLatest<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> AnyPublisher<CachingEvent<T>, B>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
-            .cachingOutput(of: transform, to: cache, when: condition)
+            .cachingOutput(of: transform, to: cache)
             .mapError { $0 as Error }
             .map { $0.compactMap(\.value).mapError { $0 as Error } }
             .switchToLatest()
@@ -296,32 +281,29 @@ extension Publisher {
 
     public func flatMapLatest<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
-        when condition: @escaping (Self.Output) -> Bool = { _ in true },
         transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self.flatMapLatest(
             cache: cache,
-            when: condition,
             transform: { transform($0).publisher() }
         )
     }
 
     private func cachingOutput<U>(
         of input: @escaping (Self.Output) -> U,
-        to cache: Persisting<Self.Output, U>,
-        when condition: @escaping (Self.Output) -> Bool
+        to cache: Persisting<Self.Output, U>
     ) -> AnyPublisher<U, Self.Failure> where Output: Hashable {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
             value: Optional<U>.none
         )) {(
-            cache: condition($1) == false ? $0.cache : $0.cache.adding(
+            cache: $0.cache.adding(
                 key: $1,
                 value: input($1)
             ),
             key: $1,
-            value: condition($1) ? nil : input($1)
+            value: nil
         )}
         .compactMap { (cache, key, value) in
             value ??
