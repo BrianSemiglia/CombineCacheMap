@@ -84,12 +84,62 @@ final class CombineCacheMapTests: XCTestCase {
         )
     }
 
+    func testMapAlways_Disk() {
+        let id = "\(#function)"
+        let cache = Persisting<Int, CachingEvent<Int>>.disk(id: id)
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1]
+                .publisher
+                .map(cache: .disk(id: id)) { _ in
+                    cacheMisses += 1
+                    return Caching(
+                        value: cacheMisses + 1,
+                        validity: .always
+                    )
+                }
+                .toBlocking(),
+            [2, 2, 2, 2]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            1
+        )
+    }
+
     func testMapNever_Memory() {
         var cacheMisses: Int = 0
         XCTAssertEqual(
             try? [1, 1, 1, 1]
                 .publisher
                 .map(cache: .memory()) { _ in
+                    cacheMisses += 1
+                    return Caching(
+                        value: cacheMisses + 1,
+                        validity: .never
+                    )
+                }
+                .toBlocking(),
+            [2, 3, 4, 5]
+        )
+        XCTAssertEqual(
+            cacheMisses,
+            4
+        )
+    }
+
+    func testMapNever_Disk() {
+        let id = "\(#function)"
+        let cache = Persisting<Int, CachingEvent<Int>>.disk(id: id)
+        cache.reset()
+
+        var cacheMisses: Int = 0
+        XCTAssertEqual(
+            try? [1, 1, 1, 1]
+                .publisher
+                .map(cache: .disk(id: id)) { _ in
                     cacheMisses += 1
                     return Caching(
                         value: cacheMisses + 1,
