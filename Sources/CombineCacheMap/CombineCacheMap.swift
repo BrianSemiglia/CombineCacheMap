@@ -175,7 +175,6 @@ extension Publisher {
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, Error>>,
         transform: @escaping (Self.Output) -> Caching<T, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
-
         self
             .mapError { $0 as Error }
             .eraseToAnyPublisher()
@@ -243,7 +242,7 @@ extension Publisher {
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
-        self.flatMap(
+        flatMap(
             cache: cache,
             transform: { transform($0).publisher() }
         )
@@ -283,7 +282,7 @@ extension Publisher {
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
         transform: @escaping (Self.Output) -> Caching<AnyPublisher<T, B>, [T]>
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
-        self.flatMapLatest(
+        flatMapLatest(
             cache: cache,
             transform: { transform($0).publisher() }
         )
