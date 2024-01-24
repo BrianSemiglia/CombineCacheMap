@@ -124,10 +124,26 @@ extension Persisting {
     // Testing
     internal func persistToDisk<K: Codable, V: Codable, E: Error>(id: String, key: K, item: AnyPublisher<V, E>) {
         _ = item
-            .persistingOutputAsSideEffect(
-                to: Self.directory.appendingPathExtension(id),
-                withKey: try! Persisting<K, V>.sha256Hash(for: key)
-            )
+            .materialize()
+            .collect()
+            .handleEvents(receiveOutput: { events in
+                do {
+                    try FileManager.default.createDirectory(
+                        at: Self.directory.appendingPathExtension(id),
+                        withIntermediateDirectories: true
+                    )
+                    try JSONEncoder()
+                        .encode(events.map(WrappedEvent.init))
+                        .write(
+                            to: Self
+                                .directory
+                                .appendingPathExtension(id)
+                                .appendingPathComponent("\(try! Persisting<K, V>.sha256Hash(for: key))")
+                        )
+                } catch {
+
+                }
+            })
             .sink { _ in }
     }
 }
@@ -324,9 +340,7 @@ extension Publishers {
                         .setFailureType(to: Error.self)
                         .eraseToAnyPublisher()
                 case .failure(let error):
-                    return Just(())
-                        .setFailureType(to: Error.self)
-                        .flatMap { _ in Fail(error: error) }
+                    return Fail(error: error)
                         .eraseToAnyPublisher()
                 case .finished:
                     return Empty(completeImmediately: true)
@@ -339,47 +353,26 @@ extension Publishers {
 }
 
 private extension Publisher {
-    func persistingOutputAsSideEffect<Key>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable {
+    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Never, Never> where Key: Codable, Output: Codable, Output == CachingEvent<T> {
         self
             .materialize()
             .collect()
-            .handleEvents(receiveOutput: { next in
-                do {
-                    try FileManager.default.createDirectory(
-                        at: url,
-                        withIntermediateDirectories: true
-                    )
-                    try JSONEncoder()
-                        .encode(next.map(WrappedEvent.init))
-                        .write(to: url.appendingPathComponent("\(key)"))
-                } catch {
-
-                }
-            })
-            .map { _ in () }
-            .eraseToAnyPublisher()
-    }
-
-    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == CachingEvent<T> {
-        self
-            .materialize()
-            .collect()
-            .handleEvents(receiveOutput: { next in
-                if next.shouldCache() && next.isExpired() == false {
+            .handleEvents(receiveOutput: { events in
+                if events.shouldCache() && events.isExpired() == false {
                     do {
                         try FileManager.default.createDirectory(
                             at: url,
                             withIntermediateDirectories: true
                         )
                         try JSONEncoder()
-                            .encode(next.map(WrappedEvent.init))
+                            .encode(events.map(WrappedEvent.init))
                             .write(to: url.appendingPathComponent("\(key)"))
                     } catch {
 
                     }
                 }
             })
-            .map { _ in () }
+            .ignoreOutput()
             .eraseToAnyPublisher()
     }
 }
