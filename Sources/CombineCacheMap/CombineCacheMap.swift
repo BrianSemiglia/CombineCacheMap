@@ -177,8 +177,6 @@ extension Publisher {
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         self
             .mapError { $0 as Error }
-            .eraseToAnyPublisher()
-
             .scan((
                 cache: cache,
                 key: Optional<Self.Output>.none,
@@ -186,12 +184,11 @@ extension Publisher {
             )) {(
                 cache: $0.cache.adding(
                     key: $1,
-                    value: transform($1).publisher() as AnyPublisher<CachingEvent<T>, Error>
+                    value: transform($1).singlePublished()
                 ),
                 key: $1,
                 value: nil
             )}
-            .eraseToAnyPublisher()
             .compactMap { (cache, key, value) in
                 value ??
                 key.flatMap { cache.value($0) }
@@ -214,9 +211,9 @@ extension Publisher {
             transform: {
                 Caching(
                     value: transform($0),
-                    validity: { _ in .always }
+                    validity: .always
                 )
-                .publisher()
+                .multiPublished()
                 .eraseToAnyPublisher()
             }
         )
@@ -233,7 +230,8 @@ extension Publisher {
         self
             .cachingOutput(of: transform, to: cache)
             .mapError { $0 as Error }
-            .map { $0.compactMap(\.value).mapError { $0 as Error } }
+            .map { $0.compactMap(\.value) }
+            .map { $0.mapError { $0 as Error } }
             .flatMap { $0 }
             .eraseToAnyPublisher()
     }
@@ -244,7 +242,7 @@ extension Publisher {
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         flatMap(
             cache: cache,
-            transform: { transform($0).publisher() }
+            transform: { transform($0).multiPublished() }
         )
     }
 
@@ -260,8 +258,8 @@ extension Publisher {
         self
             .flatMapLatest(
                 cache: cache,
-                    transform: {
-                    Caching(value: transform($0), validity: { _ in .always }).publisher()
+                transform: {
+                    Caching(value: transform($0), validity: .always).multiPublished()
                 }
             )
     }
@@ -284,7 +282,7 @@ extension Publisher {
     ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
         flatMapLatest(
             cache: cache,
-            transform: { transform($0).publisher() }
+            transform: { transform($0).multiPublished() }
         )
     }
 

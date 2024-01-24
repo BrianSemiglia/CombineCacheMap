@@ -105,7 +105,7 @@ extension CachingEvent {
 }
 
 extension Caching {
-    func publisher<E: Error>() -> AnyPublisher<CachingEvent<V>, E> where P == [V], V: Codable {
+    func singlePublished<E: Error>() -> AnyPublisher<CachingEvent<V>, E> where P == [V], V: Codable {
         [
             .value(value),
             .policy(validity([value]))
@@ -115,7 +115,7 @@ extension Caching {
         .eraseToAnyPublisher()
     }
 
-    func publisher<O, E: Error>() -> AnyPublisher<CachingEvent<O>, E> where V == AnyPublisher<O, E>, P == [V.Output], V.Output: Codable, O: Codable {
+    func multiPublished<O, E: Error>() -> AnyPublisher<CachingEvent<O>, E> where V == AnyPublisher<O, E>, P == [V.Output], V.Output: Codable, O: Codable {
         value.asCachingEventsWith(validity: { validity($0) })
     }
 }
