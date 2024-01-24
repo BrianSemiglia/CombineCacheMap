@@ -221,10 +221,16 @@ extension Publisher {
         .eraseToAnyPublisher()
     }
 
-    func replacingErrorsWithUncached(value: @escaping (Failure) -> Self) -> AnyPublisher<CachingEvent<Output>, Error> where Output: Codable {
-        tryCatch { value($0) }
+    public func replacingErrorsWithUncached<P: Publisher>(value: @escaping (Failure) -> P) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable, P.Output == Output, P.Failure == Failure {
+        self
             .map { .value($0) }
-            .append(.policy(.never))
+            .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+            .catch { error -> AnyPublisher<CachingEvent<Output>, Failure> in
+                value(error)
+                    .map { .value($0) }
+                    .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                    .eraseToAnyPublisher()
+            }
             .eraseToAnyPublisher()
     }
 }

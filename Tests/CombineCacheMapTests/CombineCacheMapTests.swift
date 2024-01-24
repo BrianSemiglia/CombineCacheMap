@@ -970,47 +970,65 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testErrorHandler_Memory() {
-        struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Error>>.memory()
-        cache.reset()
+        // Ran into an issue where the use of replacingErrorsWithUncached was appending all publisher events with a cache-validity of never
+
+        struct Foo: Error {}
 
         var cacheMisses = 0
         XCTAssertEqual(
-            try? [1, 1, 1]
+            try? [1, 2, 3]
                 .publisher
-                .flatMap(cache: cache) { _ in
-                    cacheMisses += 1
-                    return Fail(error: Foo())
-                        .eraseToAnyPublisher()
-                        .replacingErrorsWithUncached { error in Just(99).setFailureType(to: Error.self).eraseToAnyPublisher() }
+                .setFailureType(to: Error.self)
+                .flatMap(cache: .memory()) { x in
+                    Just(()).flatMap {
+                        cacheMisses += 1
+                        if cacheMisses == 3 {
+                            return Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
+                        } else {
+                            return Just(cacheMisses * 2).setFailureType(to: Error.self).eraseToAnyPublisher()
+                        }
+                    }
+                    .replacingErrorsWithUncached { error in
+                        Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
+                    }
                 }
                 .toBlocking(timeout: 10),
-            [99, 99, 99]
+            [2, 4, 99]
         )
-        XCTAssertEqual(cacheMisses, 3)
     }
 
     func testErrorHandler_Disk() {
-        struct Foo: Error {}
 
-        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Error>>.disk(id: "\(#function)")
+        // Ran into an issue where the use of replacingErrorsWithUncached was appending all publisher events with a cache-validity of never
+
+        let id = "\(#function)"
+        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Error>>.disk(id: id)
         cache.reset()
+
+        struct Foo: Error {}
 
         var cacheMisses = 0
         XCTAssertEqual(
-            try? [1, 1, 1]
+            try? [1, 2, 3]
                 .publisher
-                .flatMap(cache: cache) { _ in
-                    cacheMisses += 1
-                    return Fail<Int, Error>(error: Foo())
-                        .eraseToAnyPublisher()
-                        .replacingErrorsWithUncached { error in Just(99).setFailureType(to: Error.self).eraseToAnyPublisher() }
+                .setFailureType(to: Error.self)
+                .flatMap(cache: .disk(id: id)) { x in
+                    Just(()).flatMap {
+                        cacheMisses += 1
+                        if cacheMisses == 3 {
+                            return Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
+                        } else {
+                            return Just(cacheMisses * 2).setFailureType(to: Error.self).eraseToAnyPublisher()
+                        }
+                    }
+                    .replacingErrorsWithUncached { error in
+                        Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
+                    }
                 }
                 .toBlocking(timeout: 10),
-            [99, 99, 99]
+            [2, 4, 99]
         )
-        XCTAssertEqual(cacheMisses, 3)
     }
 
     func compilationTest() {
