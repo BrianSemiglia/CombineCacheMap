@@ -250,15 +250,6 @@ extension CachingEvent {
     }
 }
 
-extension Caching where P == [V] {
-    func isExpired(input: P) -> Bool {
-        switch validity(input) {
-        case .until(let date): return Date() < date
-        default: return false
-        }
-    }
-}
-
 extension Collection {
     func didFinishWithError<T>() -> Bool where Element == WrappedEvent<T> {
         contains {

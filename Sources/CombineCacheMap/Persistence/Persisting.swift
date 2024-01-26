@@ -73,16 +73,11 @@ public enum CachingEvent<T>: Codable where T: Codable {
     case policy(Span)
 }
 
-public struct Caching<V, P> {
+public struct Caching<V> {
     public let value: V
-    public let validity: (P) -> Span
+    public let validity: Span
 
     public init(value: V, validity: Span) {
-        self.value = value
-        self.validity = { _ in validity }
-    }
-
-    public init(value: V, validity: @escaping (P) -> Span) {
         self.value = value
         self.validity = validity
     }
@@ -105,69 +100,102 @@ extension CachingEvent {
 }
 
 extension Caching {
-    func singlePublished<E: Error>() -> AnyPublisher<CachingEvent<V>, E> where P == [V], V: Codable {
+    func singlyPublished<E: Error>() -> AnyPublisher<CachingEvent<V>, E> where V: Codable {
         [
             .value(value),
-            .policy(validity([value]))
+            .policy(validity)
         ]
         .publisher
         .setFailureType(to: E.self)
         .eraseToAnyPublisher()
-    }
-
-    func multiPublished<O, E: Error>() -> AnyPublisher<CachingEvent<O>, E> where V == AnyPublisher<O, E>, P == [V.Output], V.Output: Codable, O: Codable {
-        value.asCachingEventsWith(validity: { validity($0) })
     }
 }
 
 extension Publisher {
     public func cachingUntil(
         condition: @escaping ([Output]) -> Date
-    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>> where Output: Codable {
         Caching(
-            value: self.eraseToAnyPublisher(),
-            validity: { .until(condition($0)) }
+            value: self
+                .map(CachingEvent.value)
+                .appending {
+                    Just(.policy(.until(condition($0.compactMap(\.value)))))
+                        .setFailureType(to: Failure.self)
+                }
+                .eraseToAnyPublisher(), 
+            validity: .never
         )
     }
 
     public func cachingWhen(
         condition: @escaping ([Output]) -> Bool
-    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>> where Output: Codable {
         Caching(
-            value: self.eraseToAnyPublisher(),
-            validity: { condition($0) ? .always : .never }
+            value: self
+                .map(CachingEvent.value)
+                .appending { sum in
+                    Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                },
+            validity: .never
         )
     }
 
     public func cachingWhenExceeding(
         duration: TimeInterval
-    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>> where Output: Codable {
         Caching(
-            value: self.eraseToAnyPublisher(),
-            validity: { _ in .never }
+            value: Publishers
+                .flatMapMeasured { self } // 😀
+                .map { (CachingEvent<Output>.value($0.0), $0.1) }
+                .appending { outputs in
+                    Just((CachingEvent<Output>.policy(outputs.last!.1 > duration ? .always : .never), 0.0)) // FORCE UNWRAP
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                }
+                .map { $0.0 }
+                .eraseToAnyPublisher(),
+            validity: .never
         )
     }
 
     public func replacingErrorsWithUncached<P: Publisher>(
-        value: @escaping (Failure) -> P
-    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>, [Output]> where Output: Codable, P.Output == Output, P.Failure == Failure {
+        replacement: @escaping (Failure) -> P
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>> where Output: Codable, P.Output == Output, P.Failure == Failure {
         Caching(
             value: self
                 .map { .value($0) }
                 .append(Just(.policy(.always)).setFailureType(to: Failure.self))
-                .catch { error -> AnyPublisher<CachingEvent<Output>, Failure> in
-                    value(error)
+                .catch { error in
+                    replacement(error)
                         .map { .value($0) }
                         .append(Just(.policy(.never)).setFailureType(to: Failure.self))
                         .eraseToAnyPublisher()
                 }
                 .eraseToAnyPublisher(),
-            validity: { _ in .always }
+            validity: .never
         )
     }
 }
 
-private extension Publisher {
+extension Publishers {
+    public static func flatMapMeasured<P: Publisher>(
+        transform: @escaping () -> P
+    ) -> AnyPublisher<(P.Output, TimeInterval), P.Failure> {
+        Just(())
+            .setFailureType(to: P.Failure.self)
+            .flatMap {
+                let startDate = Date()
+                return transform()
+                    .map { ($0, Date().timeIntervalSince(startDate)) }
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+}
+
+extension Publisher {
     func asCachingEventsWith(validity: @escaping ([Output]) -> Span) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
         let shared = multicast(subject: UnboundReplaySubject())
         var cancellable: Cancellable? = nil
@@ -187,6 +215,84 @@ private extension Publisher {
 
         let live: AnyPublisher<CachingEvent<Output>, Failure>  = shared
             .map { CachingEvent.value($0) }
+            .handleEvents(receiveCompletion: { _ in
+                completions += 1
+                if completions == 2 {
+                    cancellable?.cancel()
+                    cancellable = nil
+                }
+            })
+            .eraseToAnyPublisher()
+
+        cancellable = shared.connect()
+
+        return Publishers.Concatenate(
+            prefix: live,
+            suffix: recorder
+        )
+        .eraseToAnyPublisher()
+
+        // [CachingEvent<Output>] + [Output]
+        // [.value(1)] + ([Output]) -> .policy
+    }
+
+    func asCachingEventsWith<T>(validity: @escaping ([Output]) -> Span) -> AnyPublisher<CachingEvent<Output>, Failure> where Output == CachingEvent<T> {
+        let shared = multicast(subject: UnboundReplaySubject())
+        var cancellable: Cancellable? = nil
+        var completions = 0
+
+        let recorder: AnyPublisher<CachingEvent<Output>, Failure> = shared
+            .collect()
+            .map { CachingEvent.policy(validity($0)) }
+            .handleEvents(receiveCompletion: { _ in
+                completions += 1
+                if completions == 2 {
+                    cancellable?.cancel()
+                    cancellable = nil
+                }
+            })
+            .eraseToAnyPublisher()
+
+        let live: AnyPublisher<CachingEvent<Output>, Failure>  = shared
+            .map { CachingEvent.value($0) }
+            .handleEvents(receiveCompletion: { _ in
+                completions += 1
+                if completions == 2 {
+                    cancellable?.cancel()
+                    cancellable = nil
+                }
+            })
+            .eraseToAnyPublisher()
+
+        cancellable = shared.connect()
+
+        return Publishers.Concatenate(
+            prefix: live,
+            suffix: recorder
+        )
+        .eraseToAnyPublisher()
+    }
+
+    func appending<P: Publisher>(
+        publisher: @escaping ([Output]) -> P
+    ) -> AnyPublisher<Output, Failure> where P.Output == Self.Output, P.Failure == Self.Failure {
+        let shared = multicast(subject: UnboundReplaySubject())
+        var cancellable: Cancellable? = nil
+        var completions = 0
+
+        let recorder = shared
+            .collect()
+            .flatMap { publisher($0) }
+            .handleEvents(receiveCompletion: { _ in
+                completions += 1
+                if completions == 2 {
+                    cancellable?.cancel()
+                    cancellable = nil
+                }
+            })
+            .eraseToAnyPublisher()
+
+        let live = shared
             .handleEvents(receiveCompletion: { _ in
                 completions += 1
                 if completions == 2 {
