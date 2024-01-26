@@ -121,15 +121,53 @@ extension Caching {
 }
 
 extension Publisher {
-
-    public func cachingUntil(condition: @escaping ([Output]) -> Date) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
-        asCachingEventsWith(validity: { .until(condition($0)) })
+    public func cachingUntil(
+        condition: @escaping ([Output]) -> Date
+    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+        Caching(
+            value: self.eraseToAnyPublisher(),
+            validity: { .until(condition($0)) }
+        )
     }
 
-    public func cachingWhen(condition: @escaping ([Output]) -> Bool) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
-        asCachingEventsWith(validity: { condition($0) ? .always : .never })
+    public func cachingWhen(
+        condition: @escaping ([Output]) -> Bool
+    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+        Caching(
+            value: self.eraseToAnyPublisher(),
+            validity: { condition($0) ? .always : .never }
+        )
     }
 
+    public func cachingWhenExceeding(
+        duration: TimeInterval
+    ) -> Caching<AnyPublisher<Output, Failure>, [Output]> where Output: Codable {
+        Caching(
+            value: self.eraseToAnyPublisher(),
+            validity: { _ in .never }
+        )
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        value: @escaping (Failure) -> P
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>, [Output]> where Output: Codable, P.Output == Output, P.Failure == Failure {
+        Caching(
+            value: self
+                .map { .value($0) }
+                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .catch { error -> AnyPublisher<CachingEvent<Output>, Failure> in
+                    value(error)
+                        .map { .value($0) }
+                        .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                        .eraseToAnyPublisher()
+                }
+                .eraseToAnyPublisher(),
+            validity: { _ in .always }
+        )
+    }
+}
+
+private extension Publisher {
     func asCachingEventsWith(validity: @escaping ([Output]) -> Span) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable {
         let shared = multicast(subject: UnboundReplaySubject())
         var cancellable: Cancellable? = nil
@@ -165,18 +203,5 @@ extension Publisher {
             suffix: recorder
         )
         .eraseToAnyPublisher()
-    }
-
-    public func replacingErrorsWithUncached<P: Publisher>(value: @escaping (Failure) -> P) -> AnyPublisher<CachingEvent<Output>, Failure> where Output: Codable, P.Output == Output, P.Failure == Failure {
-        self
-            .map { .value($0) }
-            .append(Just(.policy(.always)).setFailureType(to: Failure.self))
-            .catch { error -> AnyPublisher<CachingEvent<Output>, Failure> in
-                value(error)
-                    .map { .value($0) }
-                    .append(Just(.policy(.never)).setFailureType(to: Failure.self))
-                    .eraseToAnyPublisher()
-            }
-            .eraseToAnyPublisher()
     }
 }

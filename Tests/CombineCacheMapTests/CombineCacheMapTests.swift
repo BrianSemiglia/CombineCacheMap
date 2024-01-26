@@ -479,9 +479,8 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .cachingUntil { _ in Date() + 4 }
             .delay(for: .seconds(2), scheduler: testScheduler)
-            .eraseToAnyPublisher()
+            .cachingUntil { _ in Date() + 4 }
         }
         .sink(receiveCompletion: { _ in
             expectation.fulfill()
@@ -532,9 +531,8 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .cachingUntil { _ in Date() + 4 }
             .delay(for: .seconds(2), scheduler: testScheduler)
-            .eraseToAnyPublisher()
+            .cachingUntil { _ in Date() + 4 }
         }
         .sink(receiveCompletion: { _ in
             expectation.fulfill()
@@ -637,7 +635,6 @@ final class CombineCacheMapTests: XCTestCase {
                 return AnyCancellable {}
             }
             .cachingUntil { _ in Date() + 2 }
-            .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
             expectation.fulfill()
@@ -690,7 +687,6 @@ final class CombineCacheMapTests: XCTestCase {
                 return AnyCancellable {}
             }
             .cachingUntil { _ in Date() + 2 }
-            .eraseToAnyPublisher()
         }
         .sink(receiveCompletion: { _ in
             expectation.fulfill()
@@ -957,17 +953,18 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .setFailureType(to: Error.self)
                 .flatMap(cache: .memory()) { x in
-                    Just(()).flatMap {
-                        cacheMisses += 1
-                        if cacheMisses == 3 {
-                            return Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
-                        } else {
-                            return Just(cacheMisses * 2).setFailureType(to: Error.self).eraseToAnyPublisher()
+                    Just(())
+                        .flatMap {
+                            cacheMisses += 1
+                            if cacheMisses == 3 {
+                                return Fail<Int, Error>(error: Foo()).eraseToAnyPublisher()
+                            } else {
+                                return Just(cacheMisses * 2).setFailureType(to: Error.self).eraseToAnyPublisher()
+                            }
                         }
-                    }
-                    .replacingErrorsWithUncached { error in
-                        Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
-                    }
+                        .replacingErrorsWithUncached { error in
+                            Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
+                        }
                 }
                 .toBlocking(timeout: 10),
             [2, 4, 99]
@@ -1053,6 +1050,77 @@ final class CombineCacheMapTests: XCTestCase {
             }
             .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
             .store(in: &cancellables)
+    }
+
+    func testFlatMapCaching() {
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Caching(
+                value: $0,
+                validity: .always
+            )
+        }
+
+
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Caching(
+                value: Just($0).setFailureType(to: Error.self).eraseToAnyPublisher(),
+                validity: .always
+            )
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingUntil { _ in Date() + 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in
+                    Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
+                }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingWhenExceeding(duration: 1.0)
+        }
+
+
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingUntil { _ in Date() + 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in
+                    Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
+                }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .cachingWhenExceeding(duration: 1.0)
+        }
     }
 }
 
