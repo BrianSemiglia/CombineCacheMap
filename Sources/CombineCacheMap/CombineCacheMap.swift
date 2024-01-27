@@ -145,7 +145,7 @@ extension Publisher {
     private func cachingOutput<U>(
         of input: @escaping (Self.Output) -> U,
         to cache: Persisting<Self.Output, U>
-    ) -> AnyPublisher<U, Self.Failure> where Output: Hashable {
+    ) -> AnyPublisher<U, Self.Failure> where Self.Output: Hashable {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
