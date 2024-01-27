@@ -84,7 +84,7 @@ public struct Caching<V> {
 }
 
 extension Caching {
-    init<T, E: Error>(validity: Span, value: @escaping () -> T) where V == AnyPublisher<T, E> {
+    init<T, E: Error>(validity: Span = .always, value: @escaping () -> T) where V == AnyPublisher<T, E> {
         self.value = Deferred { Just(value()) }.setFailureType(to: E.self).eraseToAnyPublisher()
         self.validity = validity
     }

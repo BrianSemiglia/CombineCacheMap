@@ -713,7 +713,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
                         return x
@@ -735,7 +735,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
                         return x
@@ -756,7 +756,7 @@ final class CombineCacheMapTests: XCTestCase {
             [3, 1, 3]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: x)
                         return x
@@ -778,7 +778,7 @@ final class CombineCacheMapTests: XCTestCase {
             [3, 1, 3]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: x)
                         return x
@@ -797,7 +797,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 1)
                         return x
@@ -819,7 +819,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching(validity: .always) {
+                    Caching {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 1)
                         return x
