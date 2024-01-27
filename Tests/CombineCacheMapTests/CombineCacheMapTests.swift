@@ -746,8 +746,6 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
         )
         XCTAssertEqual(cacheMisses, 1)
-
-        // work on combining policies. you have a stash that might help
     }
 
     func testMapWhenExceedingDurationSome_Memory() {
@@ -1182,8 +1180,6 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
         )
         XCTAssertEqual(cacheMisses, 1)
-
-        // work on combining policies. you have a stash that might help
     }
 
     func testFlatMapWhenExceedingDurationSome_Memory() {

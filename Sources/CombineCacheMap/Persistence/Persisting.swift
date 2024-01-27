@@ -75,18 +75,34 @@ public enum CachingEvent<T>: Codable where T: Codable {
 
 public struct Caching<V> {
     public let value: V
-    public let validity: Span
-
-    public init(value: V, validity: Span) {
-        self.value = value
-        self.validity = validity
-    }
 }
 
 extension Caching {
-    init<T, E: Error>(validity: Span = .always, value: @escaping () -> T) where V == AnyPublisher<T, E> {
-        self.value = Deferred { Just(value()) }.setFailureType(to: E.self).eraseToAnyPublisher()
-        self.validity = validity
+    init<T, E: Error>(value: T, validity: Span) where V == AnyPublisher<CachingEvent<T>, E> {
+        self.value = Just(value)
+            .map(CachingEvent.value)
+            .appending { _ in Just(.policy(validity) )}
+            .setFailureType(to: E.self)
+            .eraseToAnyPublisher()
+    }
+
+    init<T, E: Error>(value: AnyPublisher<T, E>, validity: Span) where V == AnyPublisher<CachingEvent<T>, E> {
+        self.value = value
+            .map(CachingEvent.value)
+            .appending { _ in Just(.policy(validity)).setFailureType(to: E.self).eraseToAnyPublisher() }
+            .eraseToAnyPublisher()
+    }
+
+    init<T, E: Error>(value: T) where V == AnyPublisher<T, E> {
+        self.value = Just(value)
+            .setFailureType(to: E.self)
+            .eraseToAnyPublisher()
+    }
+
+    init<T, E: Error>(value: @escaping () -> T) where V == AnyPublisher<T, E> {
+        self.value = Deferred { Just(value()) }
+            .setFailureType(to: E.self)
+            .eraseToAnyPublisher()
     }
 }
 
@@ -103,18 +119,6 @@ extension CachingEvent {
         case .policy(.until(let date)): return date
         default: return nil
         }
-    }
-}
-
-extension Caching {
-    func singlyPublished<E: Error>() -> AnyPublisher<CachingEvent<V>, E> where V: Codable {
-        [
-            .value(value),
-            .policy(validity)
-        ]
-        .publisher
-        .setFailureType(to: E.self)
-        .eraseToAnyPublisher()
     }
 }
 
@@ -154,8 +158,7 @@ extension ComposableCaching {
                     Just(.policy(.until(condition($0.compactMap(\.value)))))
                         .setFailureType(to: Failure.self)
                 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -168,8 +171,7 @@ extension ComposableCaching {
                     Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
                         .setFailureType(to: Failure.self)
                         .eraseToAnyPublisher()
-                },
-            validity: .never
+                }
         )
     }
 
@@ -186,8 +188,7 @@ extension ComposableCaching {
                 }
                 .print()
                 .map { $0.0 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -203,15 +204,13 @@ extension ComposableCaching {
                         .append(Just(.policy(.never)).setFailureType(to: Failure.self))
                         .eraseToAnyPublisher()
                 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 }
 
 public struct ComposableCaching<V, Failure: Error> where V: Codable {
     let value: AnyPublisher<CachingEvent<V>, Failure>
-    let validity: Span
 }
 
 extension Caching {
@@ -252,8 +251,7 @@ extension Publisher {
                     Just(.policy(.until(condition($0.compactMap(\.value)))))
                         .setFailureType(to: Failure.self)
                 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -267,8 +265,7 @@ extension Publisher {
                     Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
                         .setFailureType(to: Failure.self)
                         .eraseToAnyPublisher()
-                },
-            validity: .never
+                }
         )
     }
 
@@ -286,8 +283,7 @@ extension Publisher {
                 }
                 .print()
                 .map { $0.0 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -304,8 +300,7 @@ extension Publisher {
                         .append(Just(.policy(.never)).setFailureType(to: Failure.self))
                         .eraseToAnyPublisher()
                 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 }
@@ -321,8 +316,7 @@ extension Publisher {
                     Just(.policy(.until(condition($0.compactMap(\.value)))))
                         .setFailureType(to: Failure.self)
                 }
-                .eraseToAnyPublisher(), 
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -336,8 +330,7 @@ extension Publisher {
                     Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
                         .setFailureType(to: Failure.self)
                         .eraseToAnyPublisher()
-                },
-            validity: .never
+                }
         )
     }
 
@@ -354,8 +347,7 @@ extension Publisher {
                         .eraseToAnyPublisher()
                 }
                 .map { $0.0 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 
@@ -372,8 +364,7 @@ extension Publisher {
                         .append(Just(.policy(.never)).setFailureType(to: Failure.self))
                         .eraseToAnyPublisher()
                 }
-                .eraseToAnyPublisher(),
-            validity: .never
+                .eraseToAnyPublisher()
         )
     }
 }
