@@ -86,14 +86,14 @@ extension Caching {
         self.value = Just(value)
             .map(CachingEvent.value)
             .setFailureType(to: E.self)
-            .append(Just(.policy(validity)).setFailureType(to: E.self))
+            .append(.policy(validity))
             .eraseToAnyPublisher()
     }
 
     init<T, E: Error>(value: AnyPublisher<T, E>, validity: Span) where V == AnyPublisher<CachingEvent<T>, E> {
         self.value = value
             .map(CachingEvent.value)
-            .append(Just(.policy(validity)).setFailureType(to: E.self))
+            .append(.policy(validity))
             .eraseToAnyPublisher()
     }
 
@@ -200,7 +200,7 @@ extension ComposableCaching {
     ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable, P.Output == V, P.Failure == Failure {
         Caching(
             value: value
-                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map(CachingEvent.value)
@@ -292,11 +292,11 @@ public extension Publisher {
         ComposableCaching(
             value: self
                 .map { .value($0) }
-                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map { .value($0) }
-                        .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                        .append(.policy(.never))
                         .eraseToAnyPublisher()
                 }
                 .eraseToAnyPublisher()
@@ -356,11 +356,11 @@ public extension Publisher {
         Caching(
             value: self
                 .map { .value($0) }
-                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map { .value($0) }
-                        .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                        .append(.policy(.never))
                         .eraseToAnyPublisher()
                 }
                 .eraseToAnyPublisher()
@@ -384,6 +384,12 @@ private extension Publishers {
 }
 
 private extension Publisher {
+    func append<T>(
+        value: T
+    ) -> AnyPublisher<Output, Failure> where T == Self.Output {
+        append(Just(value).setFailureType(to: Failure.self)).eraseToAnyPublisher()
+    }
+
     func appending<T>(
         value: @escaping ([Output]) -> T
     ) -> AnyPublisher<Output, Failure> where T == Self.Output {
