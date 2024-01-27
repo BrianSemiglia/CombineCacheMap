@@ -83,6 +83,13 @@ public struct Caching<V> {
     }
 }
 
+extension Caching {
+    init<T, E: Error>(validity: Span, value: @escaping () -> T) where V == AnyPublisher<T, E> {
+        self.value = Deferred { Just(value()) }.setFailureType(to: E.self).eraseToAnyPublisher()
+        self.validity = validity
+    }
+}
+
 extension CachingEvent {
     var value: T? {
         switch self {
@@ -108,6 +115,198 @@ extension Caching {
         .publisher
         .setFailureType(to: E.self)
         .eraseToAnyPublisher()
+    }
+}
+
+extension Caching where V: Publisher {
+    public func cachingUntil(
+        condition: @escaping ([V.Output]) -> Date
+    ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable {
+        value.cachingUntil(condition: condition)
+    }
+
+    public func cachingWhen(
+        condition: @escaping ([V.Output]) -> Bool
+    ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable {
+        value.cachingWhen(condition: condition)
+    }
+
+    public func cachingWhenExceeding(
+        duration: TimeInterval
+    ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable {
+        value.cachingWhenExceeding(duration: duration)
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (V.Failure) -> P
+    ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable, P.Output == V.Output, P.Failure == V.Failure {
+        value.replacingErrorsWithUncached(replacement: replacement)
+    }
+}
+
+extension ComposableCaching {
+    public func cachingUntil(
+        condition: @escaping ([V]) -> Date
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable {
+        Caching(
+            value: value
+                .appending {
+                    Just(.policy(.until(condition($0.compactMap(\.value)))))
+                        .setFailureType(to: Failure.self)
+                }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
+    }
+
+    public func cachingWhen(
+        condition: @escaping ([V]) -> Bool
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable {
+        Caching(
+            value: value
+                .appending { sum in
+                    Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                },
+            validity: .never
+        )
+    }
+
+    public func cachingWhenExceeding(
+        duration: TimeInterval
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable {
+        Caching(
+            value: Publishers
+                .flatMapMeasured { value } // 😀
+                .appending { outputs in
+                    Just((CachingEvent<V>.policy(outputs.last!.1 > duration ? .always : .never), 0.0)) // FORCE UNWRAP
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                }
+                .print()
+                .map { $0.0 }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Failure) -> P
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable, P.Output == V, P.Failure == Failure {
+        Caching(
+            value: value
+                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .catch { error in
+                    replacement(error)
+                        .map { .value($0) }
+                        .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                        .eraseToAnyPublisher()
+                }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
+    }
+}
+
+public struct ComposableCaching<V, Failure: Error> where V: Codable {
+    let value: AnyPublisher<CachingEvent<V>, Failure>
+    let validity: Span
+}
+
+extension Caching {
+    public func cachingUntil(
+        condition: @escaping ([V]) -> Date
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Error>> where V: Codable {
+        Just(value).setFailureType(to: Error.self).cachingUntil(condition: condition)
+    }
+
+    public func cachingWhen(
+        condition: @escaping ([V]) -> Bool
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Error>> where V: Codable {
+        Just(value).setFailureType(to: Error.self).cachingWhen(condition: condition)
+    }
+
+    public func cachingWhenExceeding(
+        duration: TimeInterval
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Error>> where V: Codable {
+        Just(value).setFailureType(to: Error.self).cachingWhenExceeding(duration: duration)
+    }
+
+    @available(*, unavailable)
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Never) -> P
+    ) -> Never {
+        fatalError()
+    }
+}
+
+extension Publisher {
+    public func cachingUntil(
+        condition: @escaping ([Output]) -> Date
+    ) -> ComposableCaching<Output, Failure> where Output: Codable {
+        ComposableCaching(
+            value: self
+                .map(CachingEvent.value)
+                .appending {
+                    Just(.policy(.until(condition($0.compactMap(\.value)))))
+                        .setFailureType(to: Failure.self)
+                }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
+    }
+
+    public func cachingWhen(
+        condition: @escaping ([Output]) -> Bool
+    ) -> ComposableCaching<Output, Failure> where Output: Codable {
+        ComposableCaching(
+            value: self
+                .map(CachingEvent.value)
+                .appending { sum in
+                    Just(condition(sum.compactMap(\.value)) ? .policy(.always) : .policy(.never))
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                },
+            validity: .never
+        )
+    }
+
+    public func cachingWhenExceeding(
+        duration: TimeInterval
+    ) -> ComposableCaching<Output, Failure> where Output: Codable {
+        ComposableCaching(
+            value: Publishers
+                .flatMapMeasured { self } // 😀
+                .map { (CachingEvent<Output>.value($0.0), $0.1) }
+                .appending { outputs in
+                    Just((CachingEvent<Output>.policy(outputs.last!.1 > duration ? .always : .never), 0.0)) // FORCE UNWRAP
+                        .setFailureType(to: Failure.self)
+                        .eraseToAnyPublisher()
+                }
+                .print()
+                .map { $0.0 }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Failure) -> P
+    ) -> ComposableCaching<Output, Failure> where Output: Codable, P.Output == Output, P.Failure == Failure {
+        ComposableCaching(
+            value: self
+                .map { .value($0) }
+                .append(Just(.policy(.always)).setFailureType(to: Failure.self))
+                .catch { error in
+                    replacement(error)
+                        .map { .value($0) }
+                        .append(Just(.policy(.never)).setFailureType(to: Failure.self))
+                        .eraseToAnyPublisher()
+                }
+                .eraseToAnyPublisher(),
+            validity: .never
+        )
     }
 }
 

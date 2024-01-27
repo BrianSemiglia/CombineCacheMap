@@ -712,10 +712,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory()) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: 2)
-                    return Caching(value: $0, validity: .always) // when exceeding
+                .map(cache: .memory()) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 1)
                 }
                 .toBlocking(),
             [1, 1]
@@ -731,10 +734,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(1)) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: 2)
-                    return $0
+                .map(cache: .disk(id: "\(#function)")) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 1)
                 }
                 .toBlocking(),
             [1, 1]
@@ -749,10 +755,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .map(cache: .memory(), whenExceeding: .seconds(2)) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: TimeInterval($0))
-                    return $0
+                .map(cache: .memory()) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: x)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 2)
                 }
                 .toBlocking(timeout: 7),
             [3, 1, 3]
@@ -768,10 +777,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [3, 1, 3]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(2)) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: TimeInterval($0))
-                    return $0
+                .map(cache: .disk(id: "\(#function)")) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: x)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 2)
                 }
                 .toBlocking(timeout: 7),
             [3, 1, 3]
@@ -784,10 +796,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: .memory(), whenExceeding: .seconds(2)) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: 1)
-                    return $0
+                .map(cache: .memory()) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 1)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 2)
                 }
                 .toBlocking(),
             [1, 1]
@@ -803,10 +818,13 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1]
                 .publisher
-                .map(cache: cache, whenExceeding: .seconds(2)) {
-                    cacheMisses += 1
-                    Thread.sleep(forTimeInterval: 1)
-                    return $0
+                .map(cache: .disk(id: "\(#function)")) { x in
+                    Caching(validity: .always) {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 1)
+                        return x
+                    }
+                    .cachingWhenExceeding(duration: 2)
                 }
                 .toBlocking(),
             [1, 1]

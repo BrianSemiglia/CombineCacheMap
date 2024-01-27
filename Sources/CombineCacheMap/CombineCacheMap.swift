@@ -6,67 +6,6 @@ import CombineExt
 extension Publisher {
 
     /**
-    Caches events and replays when latest incoming value equals a previous and the execution of the map took more time than the specified duration else produces new events.
-    */
-
-    public func map<T>(
-        cache: Persisting<Self.Output, CachingEvent<T>>,
-        whenExceeding duration: DispatchTimeInterval,
-        transform: @escaping (Self.Output) -> T
-    ) -> AnyPublisher<T, Self.Failure> {
-        map(
-            cache: cache,
-            whenExceeding: duration,
-            input: { CachingEvent.value(transform($0)) }
-        )
-    }
-
-    public func map<T>(
-        cache: Persisting<Self.Output, CachingEvent<T>>,
-        whenExceeding duration: DispatchTimeInterval,
-        input: @escaping (Self.Output) -> CachingEvent<T>
-    ) -> AnyPublisher<T, Self.Failure> {
-        scan((
-            cache: cache,
-            key: Optional<Self.Output>.none,
-            value: Optional<CachingEvent<T>>.none
-        )) {
-            if let _ = $0.cache.value($1) {
-                return (
-                    cache: $0.cache,
-                    key: $1,
-                    value: nil
-                )
-            } else {
-                let start = Date()
-                let result = input($1)
-                let end = Date()
-                if duration.seconds.map({ end.timeIntervalSince(start) > $0 }) == true {
-                    return (
-                        cache: cache.adding(
-                            key: $1,
-                            value: result
-                        ),
-                        key: $1,
-                        value: nil
-                    )
-                } else {
-                    return (
-                        cache: $0.cache,
-                        key: nil,
-                        value: result
-                    )
-                }
-            }
-        }
-        .compactMap { (cache, key, value) in
-            value?.value ??
-            key.flatMap { cache.value($0).flatMap(\.value) }
-        }
-        .eraseToAnyPublisher()
-    }
-
-    /**
      Caches events and replays when latest incoming value equals a previous else produces new events.
      */
 
@@ -115,6 +54,20 @@ extension Publisher {
             .flatMap { $0 }
             .compactMap(\.value)
             .eraseToAnyPublisher()
+    }
+
+    public func map<T, B: Error>(
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
+        transform: @escaping (Self.Output) -> Caching<AnyPublisher<CachingEvent<T>, B>>
+    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+        flatMap(cache: cache, transform: { transform($0).value })
+    }
+
+    public func map<T, B: Error>(
+        cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
+        transform: @escaping (Self.Output) -> ComposableCaching<T, B>
+    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+        flatMap(cache: cache, transform: { transform($0).value })
     }
 
     /**
