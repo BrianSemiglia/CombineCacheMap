@@ -1017,7 +1017,6 @@ final class CombineCacheMapTests: XCTestCase {
                     .replacingErrorsWithUncached { error in
                         Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
                     }
-                    as Caching<AnyPublisher<CachingEvent<Int>, Error>>
                 }
                 .toBlocking(timeout: 10),
             [2, 4, 99]
@@ -1078,6 +1077,27 @@ final class CombineCacheMapTests: XCTestCase {
                 value: $0,
                 validity: .always
             )
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Caching(
+                value: $0,
+                validity: .always
+            )
+            .cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Caching(
+                value: $0,
+                validity: .always
+            )
+            .cachingUntil { _ in Date() }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Caching(
+                value: $0,
+                validity: .always
+            )
+            // .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
         }
 
 
