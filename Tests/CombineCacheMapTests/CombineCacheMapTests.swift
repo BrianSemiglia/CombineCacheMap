@@ -1105,6 +1105,12 @@ final class CombineCacheMapTests: XCTestCase {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
                 .cachingWhenExceeding(duration: 1.0)
         }
 
@@ -1128,6 +1134,12 @@ final class CombineCacheMapTests: XCTestCase {
                 .replacingErrorsWithUncached{ _ in
                     Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
                 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
             Just($0)

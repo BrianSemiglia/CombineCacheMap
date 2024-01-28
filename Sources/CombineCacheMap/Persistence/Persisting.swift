@@ -150,6 +150,14 @@ extension Caching where V: Publisher {
     ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable, P.Output == V.Output, P.Failure == V.Failure {
         value.replacingErrorsWithUncached(replacement: replacement)
     }
+
+    public func replacingErrorsWithUncached<T>(
+        replacement: @escaping (V.Failure) -> T
+    ) -> ComposableCaching<V.Output, V.Failure> where V.Output: Codable, T == V.Output {
+        replacingErrorsWithUncached(
+            replacement: { Just(replacement($0)).setFailureType(to: V.Failure.self).eraseToAnyPublisher() }
+        )
+    }
 }
 
 extension ComposableCaching {
@@ -209,6 +217,12 @@ extension ComposableCaching {
                 }
                 .eraseToAnyPublisher()
         )
+    }
+
+    public func replacingErrorsWithUncached(
+        replacement: @escaping (Failure) -> V
+    ) -> Caching<AnyPublisher<CachingEvent<V>, Failure>> where V: Codable {
+        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Failure.self).eraseToAnyPublisher() }
     }
 }
 
@@ -302,6 +316,12 @@ public extension Publisher {
                 .eraseToAnyPublisher()
         )
     }
+
+    func replacingErrorsWithUncached<P>(
+        replacement: @escaping (Failure) -> P
+    ) -> ComposableCaching<Output, Failure> where Output: Codable, P == Output {
+        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Failure.self).eraseToAnyPublisher() }
+    }
 }
 
 public extension Publisher {
@@ -365,6 +385,12 @@ public extension Publisher {
                 }
                 .eraseToAnyPublisher()
         )
+    }
+
+    func replacingErrorsWithUncached<P>(
+        replacement: @escaping (Failure) -> P
+    ) -> Caching<AnyPublisher<CachingEvent<Output>, Failure>> where Output: Codable, P == Output {
+        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Failure.self).eraseToAnyPublisher() }
     }
 }
 
