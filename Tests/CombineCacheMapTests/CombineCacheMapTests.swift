@@ -1097,6 +1097,13 @@ final class CombineCacheMapTests: XCTestCase {
                 value: $0,
                 validity: .always
             )
+            .cachingWhenExceeding(duration: 1)
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Caching(
+                value: $0,
+                validity: .always
+            )
             // .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
         }
 
