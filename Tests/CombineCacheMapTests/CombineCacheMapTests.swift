@@ -805,7 +805,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .toBlocking(),
             [1, 1]
         )
-        XCTAssertEqual(cacheMisses, 2)
+        XCTAssertEqual(cacheMisses, 2) // failing because of also present .always?? YES - evaluates first policy it finds
     }
 
     func testMapWhenExceedingDurationNone_Disk() {
@@ -1104,7 +1104,7 @@ final class CombineCacheMapTests: XCTestCase {
                 value: $0,
                 validity: .always
             )
-            // .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
+//            .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
         }
 
 
