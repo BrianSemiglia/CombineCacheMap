@@ -75,8 +75,9 @@ public enum CachingEvent<T>: Codable where T: Codable {
 
 public struct Caching<V, E: Error, Tag> where V: Codable {
     public let value: AnyPublisher<CachingEvent<V>, E>
-    private init(value: AnyPublisher<CachingEvent<V>, E>) {
-        self.value = value
+    
+    init(value: @escaping () -> AnyPublisher<CachingEvent<V>, E>) {
+        self.value = Deferred { value() }.eraseToAnyPublisher()
     }
 }
 
@@ -87,22 +88,19 @@ public struct CachingMulti {
     private init() {}
 }
 
-
 extension Caching {
     init(value: V) where Tag == CachingSingle {
-        self.value = Just(value)
-            .map(CachingEvent.value)
-            .setFailureType(to: E.self)
-            .append(.policy(.always))
-            .eraseToAnyPublisher()
+        self.init { value }
     }
 
     init(value: @escaping () -> V) where Tag == CachingSingle {
-        self.value = Deferred { Just(value()) } // deferred so that `flatMapMeasured` works correctly
-            .map(CachingEvent.value)
-            .append(.policy(.always))
-            .setFailureType(to: E.self)
-            .eraseToAnyPublisher()
+        self.init {
+            Just(value())
+                .map(CachingEvent.value)
+                .append(.policy(.always))
+                .setFailureType(to: E.self)
+                .eraseToAnyPublisher()
+        }
     }
 }
 
@@ -119,67 +117,5 @@ extension CachingEvent {
         case .policy(.until(let date)): return date
         default: return nil
         }
-    }
-}
-
-extension Caching {
-    public func cachingUntil(
-        condition: @escaping ([CachingEvent<V>]) -> Date
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingMulti {
-        value.cachingUntil(condition: condition)
-    }
-
-    public func cachingUntil(
-        condition: @escaping ([CachingEvent<V>]) -> Date
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingSingle {
-        value.cachingUntil(condition: condition)
-    }
-
-    public func cachingWhen(
-        condition: @escaping ([CachingEvent<V>]) -> Bool
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingMulti {
-        value.cachingWhen(condition: condition)
-    }
-
-    public func cachingWhen(
-        condition: @escaping ([CachingEvent<V>]) -> Bool
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingSingle {
-        value.cachingWhen(condition: condition)
-    }
-
-    public func cachingWhenExceeding(
-        duration: TimeInterval
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingMulti {
-        value.cachingWhenExceeding(duration: duration)
-    }
-
-    public func cachingWhenExceeding(
-        duration: TimeInterval
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingSingle {
-        value.cachingWhenExceeding(duration: duration)
-    }
-
-    public func replacingErrorsWithUncached<P: Publisher>(
-        replacement: @escaping (P.Failure) -> P
-    ) -> Caching<V, E, Tag> where V: Codable, P.Output == CachingEvent<V>, P.Failure == E, Tag == CachingMulti {
-        value.replacingErrorsWithUncached(replacement: replacement)
-    }
-
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (E) -> Never
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingSingle {
-        fatalError()
-    }
-
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Error) -> CachingEvent<V>
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingMulti {
-        value.replacingErrorsWithUncached(replacement: replacement)
-    }
-
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Error) -> Never
-    ) -> Caching<V, E, Tag> where V: Codable, Tag == CachingSingle {
-        fatalError()
     }
 }

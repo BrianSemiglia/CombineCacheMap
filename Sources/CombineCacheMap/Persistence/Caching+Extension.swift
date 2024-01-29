@@ -145,32 +145,35 @@ public extension Publisher {
     }
 }
 
-public extension Publisher {
-    func cachingUntil<T>(
-        condition: @escaping ([Output]) -> Date
-    ) -> Caching<T, Failure, CachingMulti> where Output == CachingEvent<T> {
-        Caching {
+extension Caching { // For extending Caching publishers
+    func cachingUntil(
+        condition: @escaping ([CachingEvent<V>]) -> Date
+    ) -> Caching<V, E, CachingMulti> {
+        Caching <V, E, CachingMulti> {
             self
+                .value
                 .appending { .policy(.until(condition($0))) }
                 .eraseToAnyPublisher()
         }
     }
 
-    func cachingUntil<T>(
-        condition: @escaping ([Output]) -> Date
-    ) -> Caching<T, Failure, CachingSingle> where Output == CachingEvent<T> {
-        Caching {
+    func cachingUntil(
+        condition: @escaping ([CachingEvent<V>]) -> Date
+    ) -> Caching<V, E, CachingSingle> {
+        Caching <V, E, CachingSingle> {
             self
+                .value
                 .appending { .policy(.until(condition($0))) }
                 .eraseToAnyPublisher()
         }
     }
 
-    func cachingWhen<T>(
-        condition: @escaping ([CachingEvent<T>]) -> Bool
-    ) -> Caching<T, Failure, CachingMulti> where Output == CachingEvent<T> {
-        Caching {
+    func cachingWhen(
+        condition: @escaping ([CachingEvent<V>]) -> Bool
+    ) -> Caching<V, E, CachingMulti> {
+        Caching <V, E, CachingMulti> {
             self
+                .value
                 .appending { sum in
                     condition(sum)
                     ? .policy(.always)
@@ -179,11 +182,12 @@ public extension Publisher {
         }
     }
 
-    func cachingWhen<T>(
-        condition: @escaping ([CachingEvent<T>]) -> Bool
-    ) -> Caching<T, Failure, CachingSingle> where Output == CachingEvent<T> {
-        Caching {
+    func cachingWhen(
+        condition: @escaping ([CachingEvent<V>]) -> Bool
+    ) -> Caching<V, E, CachingSingle> {
+        Caching <V, E, CachingSingle> {
             self
+                .value
                 .appending { sum in
                     condition(sum)
                     ? .policy(.always)
@@ -192,12 +196,12 @@ public extension Publisher {
         }
     }
 
-    func cachingWhenExceeding<T>(
+    func cachingWhenExceeding(
         duration: TimeInterval
-    ) -> Caching<T, Self.Failure, CachingMulti> where Output == CachingEvent<T> {
-        Caching {
+    ) -> Caching<V, E, CachingMulti> {
+        Caching <V, E, CachingMulti> {
             Publishers
-                .flatMapMeasured { self } // 😀
+                .flatMapMeasured { value } // 😀
                 .appending { outputs in (
                     .policy(
                         outputs.last!.1 > duration // FORCE UNWRAP
@@ -211,12 +215,12 @@ public extension Publisher {
         }
     }
 
-    func cachingWhenExceeding<T>(
+    func cachingWhenExceeding(
         duration: TimeInterval
-    ) -> Caching<T, Self.Failure, CachingSingle> where Output == CachingEvent<T> {
-        Caching {
+    ) -> Caching<V, E, CachingSingle> {
+        Caching <V, E, CachingSingle> {
             Publishers
-                .flatMapMeasured { self } // 😀
+                .flatMapMeasured { value } // 😀
                 .appending { outputs in (
                     .policy(
                         outputs.last!.1 > duration // FORCE UNWRAP
@@ -230,69 +234,43 @@ public extension Publisher {
         }
     }
 
-    func replacingErrorsWithUncached<T, P: Publisher>(
-        replacement: @escaping (Self.Failure) -> P
-    ) -> Caching<T, Self.Failure, CachingMulti> where Output: Codable, P.Output == Output, P.Failure == Failure, Output == CachingEvent<T> {
-        Caching {
+    func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (E) -> P
+    ) -> Caching<V, E, CachingMulti> where V: Codable, P.Output == V, P.Failure == E {
+        Caching <V, E, CachingMulti> {
             self
+                .value
                 .append(.policy(.always))
                 .catch { error in
-                    replacement(error).append(.policy(.never))
+                    replacement(error)
+                        .map(CachingEvent.value)
+                        .append(.policy(.never))
                 }
                 .eraseToAnyPublisher()
         }
     }
 
-    func replacingErrorsWithUncached<T, P: Publisher>(
-        replacement: @escaping (Self.Failure) -> P
-    ) -> Caching<T, Self.Failure, CachingSingle> where Output: Codable, P.Output == Output, P.Failure == Failure, Output == CachingEvent<T> {
-        Caching {
+    func replacingErrorsWithUncached(
+        replacement: @escaping (E) -> V
+    ) -> Caching<V, E, CachingMulti> where V: Codable {
+        Caching <V, E, CachingMulti> {
             self
-                .append(.policy(.always))
-                .catch { error in
-                    replacement(error).append(.policy(.never))
-                }
-                .eraseToAnyPublisher()
-        }
-    }
-
-    func replacingErrorsWithUncached<T>(
-        replacement: @escaping (Self.Failure) -> Output
-    ) -> Caching<T, Self.Failure, CachingMulti> where Self.Output: Codable, Output == CachingEvent<T> {
-        Caching {
-            self
+                .value
                 .append(.policy(.always))
                 .catch { error in
                     Just(replacement(error))
+                        .map(CachingEvent.value)
                         .append(.policy(.never))
-                        .setFailureType(to: Self.Failure.self)
+                        .setFailureType(to: E.self)
                 }
                 .eraseToAnyPublisher()
         }
     }
 
-    func replacingErrorsWithUncached<T>(
-        replacement: @escaping (Self.Failure) -> Output
-    ) -> Caching<T, Self.Failure, CachingSingle> where Self.Output: Codable, Output == CachingEvent<T> {
-        Caching {
-            self
-                .append(.policy(.always))
-                .catch { error in
-                    Just(replacement(error))
-                        .append(.policy(.never))
-                        .setFailureType(to: Self.Failure.self)
-                }
-                .eraseToAnyPublisher()
-        }
-    }
-}
-
-private extension Caching {
-    init(value: @escaping () -> AnyPublisher<CachingEvent<V>, E>) {
-        self.value = Deferred { Just(value()) } // deferred so that `flatMapMeasured` works correctly
-            .setFailureType(to: E.self)
-            .flatMap { $0 }
-            .eraseToAnyPublisher()
+    func replacingErrorsWithUncached(
+        replacement: @escaping (E) -> Never
+    ) -> Caching<V, E, CachingSingle> where V: Codable {
+        fatalError()
     }
 }
 
