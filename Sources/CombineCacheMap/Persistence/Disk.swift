@@ -234,7 +234,6 @@ private extension URL {
 }
 
 extension Collection {
-
     func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
         compactMap {
             switch $0.event {

@@ -82,11 +82,11 @@ public struct Caching<V, E: Error> where V: Codable {
 }
 
 extension Caching {
-    init(value: V) where E == Never {
+    public init(value: V) where E == Never {
         self.init { value }
     }
 
-    init(value: @escaping () -> V) where E == Never {
+    public init(value: @escaping () -> V) where E == Never {
         self.init {
             Just(value())
                 .map(CachingEvent.value)

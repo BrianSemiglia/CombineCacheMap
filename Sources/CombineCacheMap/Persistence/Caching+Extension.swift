@@ -8,8 +8,8 @@
 import Foundation
 import Combine
 
-public extension Publisher {
-    func cachingUntil(
+extension Publisher {
+    public func cachingUntil(
         condition: @escaping ([Output]) -> Date
     ) -> Caching<Output, Failure> where Output: Codable {
         Caching {
@@ -20,7 +20,7 @@ public extension Publisher {
         }
     }
 
-        func cachingWhen(
+    public func cachingWhen(
         condition: @escaping ([Output]) -> Bool
     ) -> Caching<Output, Failure> where Output: Codable {
         Caching {
@@ -34,7 +34,7 @@ public extension Publisher {
         }
     }
 
-    func cachingWhenExceeding(
+    public func cachingWhenExceeding(
         duration: TimeInterval
     ) -> Caching<Output, Self.Failure> where Output: Codable {
         Caching {
@@ -54,7 +54,7 @@ public extension Publisher {
         }
     }
 
-    func replacingErrorsWithUncached<P: Publisher>(
+    public func replacingErrorsWithUncached<P: Publisher>(
         replacement: @escaping (Self.Failure) -> P
     ) -> Caching<Output, Self.Failure> where Output: Codable, P.Output == Output, P.Failure == Failure {
         Caching {
@@ -70,19 +70,19 @@ public extension Publisher {
         }
     }
 
-    func replacingErrorsWithUncached(
+    public func replacingErrorsWithUncached(
         replacement: @escaping (Self.Failure) -> Never
     ) -> Caching<Output, Self.Failure> where Output: Codable, Self.Failure == Never {
         fatalError()
     }
 
-    func replacingErrorsWithUncached<P>(
+    public func replacingErrorsWithUncached<P>(
         replacement: @escaping (Self.Failure) -> P
     ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, P == Output {
         replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Self.Failure.self).eraseToAnyPublisher() }
     }
 
-    func replacingErrorsWithUncached<P>(
+    public func replacingErrorsWithUncached<P>(
         replacement: @escaping (Self.Failure) -> Never
     ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, P == Output, Self.Failure == Never {
         fatalError()
@@ -90,7 +90,7 @@ public extension Publisher {
 }
 
 extension Caching {
-    func cachingUntil(
+    public func cachingUntil(
         condition: @escaping ([CachingEvent<V>]) -> Date
     ) -> Caching<V, E> {
         Caching <V, E> {
@@ -101,7 +101,7 @@ extension Caching {
         }
     }
 
-    func cachingWhen(
+    public func cachingWhen(
         condition: @escaping ([CachingEvent<V>]) -> Bool
     ) -> Caching<V, E> {
         Caching <V, E> {
@@ -115,7 +115,7 @@ extension Caching {
         }
     }
 
-    func cachingWhenExceeding(
+    public func cachingWhenExceeding(
         duration: TimeInterval
     ) -> Caching<V, E> {
         Caching <V, E> {
@@ -134,7 +134,7 @@ extension Caching {
         }
     }
 
-    func replacingErrorsWithUncached<P: Publisher>(
+    public func replacingErrorsWithUncached<P: Publisher>(
         replacement: @escaping (E) -> P
     ) -> Caching<V, E> where V: Codable, P.Output == V, P.Failure == E {
         Caching <V, E> {
@@ -150,19 +150,19 @@ extension Caching {
         }
     }
 
-    func replacingErrorsWithUncached(
+    public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> Never
     ) -> Caching<V, E> where V: Codable, E == Never {
         fatalError()
     }
 
-    func replacingErrorsWithUncached(
+    public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> V
     ) -> Caching<V, E> where V: Codable {
         replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: E.self).eraseToAnyPublisher() }
     }
 
-    func replacingErrorsWithUncached(
+    public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> Never
     ) -> Caching<V, E> where V: Codable {
         fatalError()
