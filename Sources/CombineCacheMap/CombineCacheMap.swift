@@ -37,7 +37,6 @@ extension Publisher {
         )
     }
 
-
     /**
      Caches publishers and replays their events when latest incoming value equals a previous else produces new events.
      */
@@ -56,10 +55,6 @@ extension Publisher {
             }
         )
     }
-
-    /**
-     Caches publishers and replays their events when latest incoming value equals a previous value and output Date is greater than Date of event else produces new events.
-     */
 
     public func flatMap<T, B: Error>(
         cache: Persisting<Self.Output, AnyPublisher<CachingEvent<T>, B>>,
@@ -105,7 +100,6 @@ extension Publisher {
                 }
             )
     }
-
 
     // Caching<CachingEvent<T>> -> [CachingEvent<T>]
     public func flatMapLatest<T, B: Error>(
