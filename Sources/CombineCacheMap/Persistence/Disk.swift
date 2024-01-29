@@ -7,6 +7,77 @@ extension Persisting {
 
     private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
 
+    public static func disk<V>(
+        id: String
+    ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Never>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, Never> {
+        Persisting<Key, AnyPublisher<CachingEvent<V>, Never>>(
+            backing: (
+                writes: TypedCache<String, AnyPublisher<CachingEvent<V>, Never>>(),
+                memory: TypedCache<String, [WrappedEvent<CachingEvent<V>>]>(),
+                disk: directory.appendingPathExtension(id)
+            ),
+            set: { backing, value, key in
+                backing.writes.setObject(
+                    value,
+                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                )
+            },
+            value: { backing, key in
+                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                if let write = backing.writes.object(forKey: key) {
+                    // 1. Publisher needs to execute once to capture values.
+                    //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
+                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
+
+                    let shared = write.replayingIndefinitely
+
+                    return Publishers.Merge(
+                        shared,
+                        shared
+                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
+                            .setFailureType(to: Never.self)
+                            .flatMap { _ in Empty() } // publisher completes with nothing (void)
+                            .eraseToAnyPublisher()
+                    ).eraseToAnyPublisher()
+                } else if let memory = backing.memory.object(forKey: key) {
+                    // 3. Further gets come from memory
+                    if memory.isValid() == false {
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk.appendingPathExtension("\(key)")
+                        )
+                        return nil
+                    } else {
+                        return Publishers.publisher(from: memory)
+                    }
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<CachingEvent<V>>].self) {
+                    // 2. Data is made an observable again but without the disk write side-effect
+                    if values.isValid() == false || values.didFinishWithError() {
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.removeObject(forKey: key)
+                        try? FileManager.default.removeItem(
+                            at: backing.disk.appendingPathExtension("\(key)")
+                        )
+                        return nil
+                    } else {
+                        backing.memory.setObject(values, forKey: key)
+                        return Publishers.publisher(from: values)
+                    }
+                } else {
+                    return nil
+                }
+            },
+            reset: { backing in
+                backing.writes.removeAllObjects()
+                backing.memory.removeAllObjects()
+                try? FileManager.default.removeItem(
+                    at: backing.disk
+                )
+            }
+        )
+    }
+
     public static func disk<V, E: Error>(
         id: String
     ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, E> {
@@ -303,6 +374,28 @@ extension Publishers {
                 case .finished:
                     return Empty(completeImmediately: true)
                         .setFailureType(to: Error.self)
+                        .eraseToAnyPublisher()
+                }
+            }
+            .eraseToAnyPublisher()
+    }
+
+    static func publisher<O>(from wrappedEvents: [WrappedEvent<O>]) -> AnyPublisher<O, Never> {
+        wrappedEvents
+            .publisher
+            .setFailureType(to: Never.self)
+            .flatMap { wrapped in
+                switch wrapped.event {
+                case .value(let value):
+                    return Just(value)
+                        .setFailureType(to: Never.self)
+                        .eraseToAnyPublisher()
+                case .failure(let error):
+                    return Fail(error: error as! Never)
+                        .eraseToAnyPublisher()
+                case .finished:
+                    return Empty(completeImmediately: true)
+                        .setFailureType(to: Never.self)
                         .eraseToAnyPublisher()
                 }
             }

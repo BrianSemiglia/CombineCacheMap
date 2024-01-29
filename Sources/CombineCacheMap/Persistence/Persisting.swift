@@ -73,7 +73,7 @@ public enum CachingEvent<T>: Codable where T: Codable {
     case policy(Span)
 }
 
-public struct Caching<V, E: Error, Tag> where V: Codable {
+public struct Caching<V, E: Error> where V: Codable {
     public let value: AnyPublisher<CachingEvent<V>, E>
     
     init(value: @escaping () -> AnyPublisher<CachingEvent<V>, E>) {
@@ -81,19 +81,12 @@ public struct Caching<V, E: Error, Tag> where V: Codable {
     }
 }
 
-public struct CachingSingle {
-    private init() {}
-}
-public struct CachingMulti {
-    private init() {}
-}
-
 extension Caching {
-    init(value: V) where Tag == CachingSingle {
+    init(value: V) where E == Never {
         self.init { value }
     }
 
-    init(value: @escaping () -> V) where Tag == CachingSingle {
+    init(value: @escaping () -> V) where E == Never {
         self.init {
             Just(value())
                 .map(CachingEvent.value)

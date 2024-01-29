@@ -166,7 +166,7 @@ final class CombineCacheMapTests: XCTestCase {
     }
 
     func testMapExpiration_Disk() {
-        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Error>>.disk(id: "\(#function)")
+        let cache = Persisting<Int, AnyPublisher<CachingEvent<Int>, Never>>.disk(id: "\(#function)")
         cache.reset()
 
         var cacheMisses: Int = 0
@@ -175,7 +175,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: cache) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingUntil { _ in
+                    return Caching<Int, Never>(value: cacheMisses).cachingUntil { _ in
                         cacheMisses > 2
                         ? Date() + 99
                         : Date() - 99
@@ -701,7 +701,9 @@ final class CombineCacheMapTests: XCTestCase {
                         return x
                     }
                     .cachingWhenExceeding(duration: 1)
+                    .replacingErrorsWithUncached { _ in 99 }
                 }
+                .map { $0 }
                 .toBlocking(),
             [1, 1]
         )
