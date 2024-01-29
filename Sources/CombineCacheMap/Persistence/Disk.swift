@@ -41,7 +41,7 @@ extension Persisting {
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.isExpired() {
+                    if memory.isValid() == false {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -53,7 +53,7 @@ extension Persisting {
                     }
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<CachingEvent<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
-                    if values.isExpired() || values.didFinishWithError() {
+                    if values.isValid() == false || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
@@ -84,7 +84,7 @@ extension Persisting {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
-                if value.shouldCache == true && value.isExpired == false {
+                if value.shouldCache {
                     let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                     do {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -98,7 +98,7 @@ extension Persisting {
                 (try? Persisting.sha256Hash(for: key))
                     .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
                     .flatMap { x in
-                        if x.isExpired == false {
+                        if x.shouldCache {
                             return x
                         } else {
                             try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
@@ -163,29 +163,8 @@ private extension URL {
 }
 
 extension Collection {
-    
-    func isExpired<T>() -> Bool where Element == CachingEvent<T> {
-        contains { $0.isExpired }
-    }
 
-    func isExpired<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
-        compactMap {
-            switch $0.event {
-            case .value(let value):
-                switch value {
-                case .policy(_):
-                    return value
-                default:
-                    return nil
-                }
-            default: 
-                return nil
-            }
-        }
-        .contains { $0.isExpired }
-    }
-
-    func shouldCache<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
+    func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -199,10 +178,12 @@ extension Collection {
                 return nil
             }
         }
-        .contains { $0.shouldCache }
+        .first { $0.shouldCache == false }
+        .map { _ in false }
+        ?? true
     }
 
-    func isExpired<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
+    func isValid<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -216,35 +197,21 @@ extension Collection {
                 return nil
             }
         }
-        .contains { $0.isExpired }
-    }
-
-    func shouldCache<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
-        compactMap {
-            switch $0.event {
-            case .value(let value):
-                switch value {
-                case .policy(_):
-                    return value
-                default:
-                    return nil
-                }
-            default:
-                return nil
-            }
-        }
-        .contains { $0.shouldCache }
+        .first { $0.shouldCache == false }
+        .map { _ in false }
+        ?? true
     }
 }
 
 extension CachingEvent {
-    var isExpired: Bool {
-        expiration.map { Date() >= $0 } ?? false
-    }
-
     var shouldCache: Bool {
-        switch self {
-        case .policy(.never): return false
+        switch self { // order is important here
+        case .policy(.never): 
+            return false
+        case .policy(.until(let expiration)):
+            return Date() < expiration
+        case .policy(.always): 
+            return true
         default: return true
         }
     }
@@ -349,7 +316,7 @@ private extension Publisher {
             .materialize()
             .collect()
             .handleEvents(receiveOutput: { events in
-                if events.shouldCache() && events.isExpired() == false {
+                if events.isValid() {
                     do {
                         try FileManager.default.createDirectory(
                             at: url,

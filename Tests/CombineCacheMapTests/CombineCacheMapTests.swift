@@ -66,17 +66,14 @@ final class CombineCacheMapTests: XCTestCase {
     func testMapAlways_Memory() {
         var cacheMisses: Int = 0
         XCTAssertEqual(
-            try? [1, 1, 1, 1]
+            try? [0, 0, 0, 0]
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses + 1,
-                        validity: .always
-                    )
+                    return Caching(value: cacheMisses).cachingWhen { _ in true }
                 }
                 .toBlocking(),
-            [2, 2, 2, 2]
+            [1, 1, 1, 1]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -91,17 +88,14 @@ final class CombineCacheMapTests: XCTestCase {
 
         var cacheMisses: Int = 0
         XCTAssertEqual(
-            try? [1, 1, 1, 1]
+            try? [0, 0, 0, 0]
                 .publisher
                 .map(cache: .disk(id: id)) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses + 1,
-                        validity: .always
-                    )
+                    return Caching(value: cacheMisses).cachingWhen { _ in true }
                 }
                 .toBlocking(),
-            [2, 2, 2, 2]
+            [1, 1, 1, 1]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -116,13 +110,10 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses + 1,
-                        validity: .never
-                    )
+                    return Caching(value: cacheMisses).cachingWhen { _ in false }
                 }
                 .toBlocking(),
-            [2, 3, 4, 5]
+            [1, 2, 3, 4]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -141,13 +132,10 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .disk(id: id)) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses + 1,
-                        validity: .never
-                    )
+                    return Caching(value: cacheMisses).cachingWhen { _ in false }
                 }
                 .toBlocking(),
-            [2, 3, 4, 5]
+            [1, 2, 3, 4]
         )
         XCTAssertEqual(
             cacheMisses,
@@ -162,14 +150,11 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses,
-                        validity: .until(
-                            cacheMisses > 2
-                            ? Date() + 99
-                            : Date() - 99
-                        )
-                    )
+                    return Caching(value: cacheMisses).cachingUntil { _ in
+                        cacheMisses > 2
+                        ? Date() + 99
+                        : Date() - 99
+                    }
                 }
                 .toBlocking(),
             [1, 2, 3, 3]
@@ -190,14 +175,11 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: cache) { _ in
                     cacheMisses += 1
-                    return Caching(
-                        value: cacheMisses,
-                        validity: .until(
-                            cacheMisses > 2
-                            ? Date() + 99
-                            : Date() - 99
-                        )
-                    )
+                    return Caching(value: cacheMisses).cachingUntil { _ in
+                        cacheMisses > 2
+                        ? Date() + 99
+                        : Date() - 99
+                    }
                 }
                 .toBlocking(),
             [1, 2, 3, 3]
@@ -1073,37 +1055,22 @@ final class CombineCacheMapTests: XCTestCase {
 
     func testFlatMapCaching() {
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(
-                value: $0,
-                validity: .always
-            )
+            Caching(value: $0)
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(
-                value: $0,
-                validity: .always
-            )
+            Caching(value: $0)
             .cachingWhen { _ in true }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(
-                value: $0,
-                validity: .always
-            )
+            Caching(value: $0)
             .cachingUntil { _ in Date() }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(
-                value: $0,
-                validity: .always
-            )
+            Caching(value: $0)
             .cachingWhenExceeding(duration: 1)
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(
-                value: $0,
-                validity: .always
-            )
+            Caching(value: $0)
 //            .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
         }
 
@@ -1312,3 +1279,15 @@ final class CombineCacheMapTests: XCTestCase {
     }
 }
 
+struct HashedBy<Identity>: Hashable where Identity: Hashable {
+    let identity: Identity
+    let value: String
+
+    static func == (lhs: HashedBy, rhs: HashedBy) -> Bool {
+        return lhs.identity == rhs.identity
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(identity)
+    }
+}

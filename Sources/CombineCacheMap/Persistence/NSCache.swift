@@ -8,7 +8,7 @@ extension Persisting {
         Persisting<K, CachingEvent<V>>(
             backing:TypedCache<K, CachingEvent<V>>(),
             set: { cache, value, key in
-                if value.isExpired == false && value.shouldCache {
+                if value.shouldCache {
                     cache.setObject(
                         value,
                         forKey: key
@@ -51,7 +51,7 @@ extension Persisting {
                             .materialize()
                             .collect()
                             .handleEvents(receiveOutput: { next in
-                                if next.shouldCache() && next.isExpired() == false {
+                                if next.isValid() {
                                     backing.memory.setObject(next.map(WrappedEvent.init), forKey: key)
                                 }
                             })
@@ -61,7 +61,7 @@ extension Persisting {
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.isExpired() || memory.didFinishWithError() {
+                    if memory.isValid() == false || memory.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         return nil

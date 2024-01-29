@@ -182,3 +182,12 @@ private extension DispatchTimeInterval {
         }
     }
 }
+
+private extension Caching {
+    init(value: AnyPublisher<V, E>, validity: Span) where Tag == CachingMulti {
+        self.value = value
+            .map(CachingEvent.value)
+            .append(.policy(validity))
+            .eraseToAnyPublisher()
+    }
+}
