@@ -9,11 +9,11 @@ extension Persisting {
 
     public static func disk<V>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Never>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, Never> {
-        Persisting<Key, AnyPublisher<CachingEvent<V>, Never>>(
+    ) -> Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>> where Key: Codable, Value == AnyPublisher<Cachable.Event<V>, Never> {
+        Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<CachingEvent<V>, Never>>(),
-                memory: TypedCache<String, [WrappedEvent<CachingEvent<V>>]>(),
+                writes: TypedCache<String, AnyPublisher<Cachable.Event<V>, Never>>(),
+                memory: TypedCache<String, [WrappedEvent<Cachable.Event<V>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -51,7 +51,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<CachingEvent<V>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isValid() == false || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -80,11 +80,11 @@ extension Persisting {
 
     public static func disk<V, E: Error>(
         id: String
-    ) -> Persisting<Key, AnyPublisher<CachingEvent<V>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<V>, E> {
-        Persisting<Key, AnyPublisher<CachingEvent<V>, Error>>(
+    ) -> Persisting<Key, AnyPublisher<Cachable.Event<V>, Error>> where Key: Codable, Value == AnyPublisher<Cachable.Event<V>, E> {
+        Persisting<Key, AnyPublisher<Cachable.Event<V>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<CachingEvent<V>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<CachingEvent<V>>]>(),
+                writes: TypedCache<String, AnyPublisher<Cachable.Event<V>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Cachable.Event<V>>]>(),
                 disk: directory.appendingPathExtension(id)
             ),
             set: { backing, value, key in
@@ -122,7 +122,7 @@ extension Persisting {
                     } else {
                         return Publishers.publisher(from: memory)
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<CachingEvent<V>>].self) {
+                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isValid() == false || values.didFinishWithError() {
                         backing.writes.removeObject(forKey: key)
@@ -151,7 +151,7 @@ extension Persisting {
 
     public static func disk<T>(
         id: String
-    ) -> Persisting<Key, Value> where Key: Codable, Value == CachingEvent<T> {
+    ) -> Persisting<Key, Value> where Key: Codable, Value == Cachable.Event<T> {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
@@ -234,7 +234,7 @@ private extension URL {
 }
 
 extension Collection {
-    func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<CachingEvent<T>, F> {
+    func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<Cachable.Event<T>, F> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -251,7 +251,7 @@ extension Collection {
         .contains { $0.shouldCache == false } ? false : true
     }
 
-    func isValid<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
+    func isValid<T>() -> Bool where Element == WrappedEvent<Cachable.Event<T>> {
         compactMap {
             switch $0.event {
             case .value(let value):
@@ -269,7 +269,7 @@ extension Collection {
     }
 }
 
-extension CachingEvent {
+extension Cachable.Event {
     var shouldCache: Bool {
         switch self { // order is important here
         case .policy(.never): 
@@ -399,7 +399,7 @@ extension Publishers {
 }
 
 private extension Publisher {
-    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == CachingEvent<T> {
+    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == Cachable.Event<T> {
         self
             .materialize()
             .collect()

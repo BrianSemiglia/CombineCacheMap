@@ -14,7 +14,7 @@ extension Publisher {
     ) -> Caching<Output, Failure> where Output: Codable {
         Caching {
             self
-                .map(CachingEvent.value)
+                .map(Cachable.Event.value)
                 .appending { .policy(.until(condition($0.compactMap(\.value)))) }
                 .eraseToAnyPublisher()
         }
@@ -25,7 +25,7 @@ extension Publisher {
     ) -> Caching<Output, Failure> where Output: Codable {
         Caching {
             self
-                .map(CachingEvent.value)
+                .map(Cachable.Event.value)
                 .appending { sum in
                     condition(sum.compactMap(\.value))
                     ? .policy(.always)
@@ -43,9 +43,9 @@ extension Publisher {
                 .map {
                     switch $0 {
                     case .value(let value):
-                        return CachingEvent.value(value)
+                        return Cachable.Event.value(value)
                     case .duration(let value):
-                        return value > duration ? CachingEvent.policy(.always) : .policy(.never)
+                        return value > duration ? Cachable.Event.policy(.always) : .policy(.never)
                     }
                 }
                 .eraseToAnyPublisher()
@@ -71,7 +71,7 @@ extension Publisher {
         Caching {
             self
                 .map { .value($0) }
-                .append(CachingEvent.policy(.always))
+                .append(Cachable.Event.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map { .value($0) }
@@ -96,7 +96,7 @@ extension Publisher {
 
 extension Caching {
     public func cachingUntil(
-        condition: @escaping ([CachingEvent<V>]) -> Date
+        condition: @escaping ([Cachable.Event<V>]) -> Date
     ) -> Caching<V, E> {
         Caching <V, E> {
             self
@@ -107,7 +107,7 @@ extension Caching {
     }
 
     public func cachingWhen(
-        condition: @escaping ([CachingEvent<V>]) -> Bool
+        condition: @escaping ([Cachable.Event<V>]) -> Bool
     ) -> Caching<V, E> {
         Caching <V, E> {
             self
@@ -148,7 +148,7 @@ extension Caching {
                 .append(.policy(.always))
                 .catch { error in
                     replacement(error)
-                        .map(CachingEvent.value)
+                        .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
                 .eraseToAnyPublisher()
@@ -164,7 +164,7 @@ extension Caching {
                 .append(.policy(.always))
                 .catch { error in
                     replacement(error)
-                        .map(CachingEvent.value)
+                        .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
                 .eraseToAnyPublisher()
@@ -180,7 +180,7 @@ extension Caching {
                 .append(.policy(.always))
                 .catch { error in
                     Just(replacement(error))
-                        .map(CachingEvent.value)
+                        .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
                 .eraseToAnyPublisher()

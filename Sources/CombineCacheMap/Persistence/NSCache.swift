@@ -4,9 +4,9 @@ import CombineExt
 
 extension Persisting {
 
-    public static func memory<K, V>() -> Persisting<K, CachingEvent<V>> {
-        Persisting<K, CachingEvent<V>>(
-            backing:TypedCache<K, CachingEvent<V>>(),
+    public static func memory<K, V>() -> Persisting<K, Cachable.Event<V>> {
+        Persisting<K, Cachable.Event<V>>(
+            backing:TypedCache<K, Cachable.Event<V>>(),
             set: { cache, value, key in
                 if value.shouldCache {
                     cache.setObject(
@@ -24,11 +24,11 @@ extension Persisting {
         )
     }
 
-    public static func memory<T>() -> Persisting<Key, AnyPublisher<CachingEvent<T>, Never>> where Key: Codable, Value == AnyPublisher<CachingEvent<T>, Never> {
-        Persisting<Key, AnyPublisher<CachingEvent<T>, Never>>(
+    public static func memory<T>() -> Persisting<Key, AnyPublisher<Cachable.Event<T>, Never>> where Key: Codable, Value == AnyPublisher<Cachable.Event<T>, Never> {
+        Persisting<Key, AnyPublisher<Cachable.Event<T>, Never>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<CachingEvent<T>, Never>>(),
-                memory: TypedCache<String, [WrappedEvent<CachingEvent<T>>]>()
+                writes: TypedCache<String, AnyPublisher<Cachable.Event<T>, Never>>(),
+                memory: TypedCache<String, [WrappedEvent<Cachable.Event<T>>]>()
             ),
             set: { backing, value, key in
                 backing.writes.setObject(
@@ -80,11 +80,11 @@ extension Persisting {
         )
     }
 
-    public static func memory<T>() -> Persisting<Key, AnyPublisher<CachingEvent<T>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<T>, Error> {
-        Persisting<Key, AnyPublisher<CachingEvent<T>, Error>>(
+    public static func memory<T>() -> Persisting<Key, AnyPublisher<Cachable.Event<T>, Error>> where Key: Codable, Value == AnyPublisher<Cachable.Event<T>, Error> {
+        Persisting<Key, AnyPublisher<Cachable.Event<T>, Error>>(
             backing: (
-                writes: TypedCache<String, AnyPublisher<CachingEvent<T>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<CachingEvent<T>>]>()
+                writes: TypedCache<String, AnyPublisher<Cachable.Event<T>, Error>>(),
+                memory: TypedCache<String, [WrappedEvent<Cachable.Event<T>>]>()
             ),
             set: { backing, value, key in
                 backing.writes.setObject(
