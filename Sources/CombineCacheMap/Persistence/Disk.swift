@@ -248,9 +248,7 @@ extension Collection {
                 return nil
             }
         }
-        .first { $0.shouldCache == false }
-        .map { _ in false }
-        ?? true
+        .contains { $0.shouldCache == false } ? false : true
     }
 
     func isValid<T>() -> Bool where Element == WrappedEvent<CachingEvent<T>> {
@@ -267,9 +265,7 @@ extension Collection {
                 return nil
             }
         }
-        .first { $0.shouldCache == false }
-        .map { _ in false }
-        ?? true
+        .contains { $0.shouldCache == false } ? false : true
     }
 }
 
@@ -280,7 +276,7 @@ extension CachingEvent {
             return false
         case .policy(.until(let expiration)):
             return Date() < expiration
-        case .policy(.always): 
+        case .policy(.always):
             return true
         default: return true
         }

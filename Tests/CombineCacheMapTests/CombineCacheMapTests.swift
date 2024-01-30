@@ -1279,17 +1279,83 @@ final class CombineCacheMapTests: XCTestCase {
         )
         XCTAssertEqual(cacheMisses, 2)
     }
-}
 
 struct HashedBy<Identity>: Hashable where Identity: Hashable {
     let identity: Identity
     let value: String
+    func testMapValidationReconciliationCachingWhenFalse_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWhen { _ in false }               // false
+                    .cachingUntil { _ in Date.distantFuture } // true
+                    .cachingWhenExceeding(duration: -1)       // true
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
+    }
 
     static func == (lhs: HashedBy, rhs: HashedBy) -> Bool {
         return lhs.identity == rhs.identity
+    func testMapValidationReconciliationCachingUntilFalse_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWhen { _ in true }                // true
+                    .cachingUntil { _ in Date.distantPast }   // false
+                    .cachingWhenExceeding(duration: -1)       // true
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(identity)
+    func testMapValidationReconciliationCachingWhenExceedingFalse_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWhen { _ in true }                // true
+                    .cachingUntil { _ in Date.distantFuture } // true
+                    .cachingWhenExceeding(duration: 99)       // true
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
     }
 }

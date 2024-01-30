@@ -40,27 +40,23 @@ extension Publisher {
         Caching {
             Publishers
                 .flatMapMeasured { self } // 😀
-                .map { (CachingEvent.value($0.0), $0.1) }
-                .appending { outputs in (
-                    .policy(
-                        outputs.last!.1 > duration // FORCE UNWRAP
-                        ? .always
-                        : .never
-                    ),
-                    0.0
-                )}
-                .map { $0.0 }
+                .map {
+                    switch $0 {
+                    case .value(let value):
+                        return CachingEvent.value(value)
+                    case .duration(let value):
+                        return value > duration ? CachingEvent.policy(.always) : .policy(.never)
+                    }
+                }
                 .eraseToAnyPublisher()
         }
     }
 
     public func replacingErrorsWithUncached<P: Publisher>(
         replacement: @escaping (Self.Failure) -> P
-    ) -> Caching<Output, Self.Failure> where Output: Codable, P.Output == Output, P.Failure == Failure {
         Caching {
             self
                 .map { .value($0) }
-                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map { .value($0) }
@@ -70,21 +66,9 @@ extension Publisher {
         }
     }
 
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Self.Failure) -> Never
-    ) -> Caching<Output, Self.Failure> where Output: Codable, Self.Failure == Never {
-        fatalError()
     }
 
-    public func replacingErrorsWithUncached<P>(
-        replacement: @escaping (Self.Failure) -> P
-    ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, P == Output {
-        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Self.Failure.self).eraseToAnyPublisher() }
-    }
-
-    public func replacingErrorsWithUncached<P>(
         replacement: @escaping (Self.Failure) -> Never
-    ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, P == Output, Self.Failure == Never {
         fatalError()
     }
 }
@@ -116,20 +100,20 @@ extension Caching {
     }
 
     public func cachingWhenExceeding(
-        duration: TimeInterval
+        duration limit: TimeInterval
     ) -> Caching<V, E> {
-        Caching <V, E> {
+        Caching {
             Publishers
                 .flatMapMeasured { value } // 😀
-                .appending { outputs in (
-                    .policy(
-                        outputs.last!.1 > duration // FORCE UNWRAP
-                        ? .always
-                        : .never
-                    ),
-                    0.0
-                )}
-                .map { $0.0 }
+                .print()
+                .map {
+                    switch $0 {
+                    case .value(let value): 
+                        return value
+                    case .duration(let duration):
+                        return duration > limit ? .policy(.always) : .policy(.never)
+                    }
+                }
                 .eraseToAnyPublisher()
         }
     }
@@ -150,21 +134,14 @@ extension Caching {
         }
     }
 
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (E) -> Never
-    ) -> Caching<V, E> where V: Codable, E == Never {
-        fatalError()
     }
 
     public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> V
-    ) -> Caching<V, E> where V: Codable {
-        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: E.self).eraseToAnyPublisher() }
     }
 
     public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> Never
-    ) -> Caching<V, E> where V: Codable {
         fatalError()
     }
 }
@@ -221,16 +198,34 @@ private extension Publisher {
     }
 }
 
+enum Measured<T>: Codable where T: Codable {
+    case value(T)
+    case duration(TimeInterval)
+    var value: T? {
+        switch self {
+        case .value(let value): return value
+        default: return nil
+        }
+    }
+    var duration: TimeInterval? {
+        switch self {
+        case .duration(let value): return value
+        default: return nil
+        }
+    }
+}
+
 private extension Publishers {
     static func flatMapMeasured<P: Publisher>(
         transform: @escaping () -> P
-    ) -> AnyPublisher<(P.Output, TimeInterval), P.Failure> {
+    ) -> AnyPublisher<Measured<P.Output>, P.Failure> {
         Just(())
             .setFailureType(to: P.Failure.self)
             .flatMap {
                 let startDate = Date()
                 return transform()
-                    .map { ($0, Date().timeIntervalSince(startDate)) }
+                    .map { Measured.value($0) }
+                    .appending { _ in .duration(Date().timeIntervalSince(startDate)) }
             }
             .eraseToAnyPublisher()
     }
