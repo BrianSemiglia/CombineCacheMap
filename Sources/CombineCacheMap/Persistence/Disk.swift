@@ -53,16 +53,16 @@ extension Persisting {
                     }
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
-                    if values.isValid() == false || values.didFinishWithError() {
+                    if values.isValid() {
+                        backing.memory.setObject(values, forKey: key)
+                        return Publishers.publisher(from: values)
+                    } else {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
                             at: backing.disk.appendingPathExtension("\(key)")
                         )
                         return nil
-                    } else {
-                        backing.memory.setObject(values, forKey: key)
-                        return Publishers.publisher(from: values)
                     }
                 } else {
                     return nil
@@ -112,28 +112,28 @@ extension Persisting {
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.isValid() == false {
+                    if memory.isValid() {
+                        return Publishers.publisher(from: memory)
+                    } else {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
                             at: backing.disk.appendingPathExtension("\(key)")
                         )
                         return nil
-                    } else {
-                        return Publishers.publisher(from: memory)
                     }
                 } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
                     // 2. Data is made an observable again but without the disk write side-effect
-                    if values.isValid() == false || values.didFinishWithError() {
+                    if values.isValid() {
+                        backing.memory.setObject(values, forKey: key)
+                        return Publishers.publisher(from: values)
+                    } else {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         try? FileManager.default.removeItem(
                             at: backing.disk.appendingPathExtension("\(key)")
                         )
                         return nil
-                    } else {
-                        backing.memory.setObject(values, forKey: key)
-                        return Publishers.publisher(from: values)
                     }
                 } else {
                     return nil
@@ -155,7 +155,7 @@ extension Persisting {
         Persisting<Key, Value>(
             backing: directory.appendingPathExtension(id),
             set: { folder, value, key in
-                if value.shouldCache {
+                if value.satisfiesPolicy {
                     let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
                     do {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -169,7 +169,7 @@ extension Persisting {
                 (try? Persisting.sha256Hash(for: key))
                     .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
                     .flatMap { x in
-                        if x.shouldCache {
+                        if x.satisfiesPolicy {
                             return x
                         } else {
                             try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
@@ -235,43 +235,39 @@ private extension URL {
 
 extension Collection {
     func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<Cachable.Event<T>, F> {
-        compactMap {
+        reversed().first {
             switch $0.event {
             case .value(let value):
                 switch value {
-                case .policy(_):
-                    return value
-                default:
-                    return nil
+                case .policy: return value.satisfiesPolicy
+                default: return false
                 }
-            default:
-                return nil
+            case .failure: return false
+            default: return false
             }
         }
-        .contains { $0.shouldCache == false } ? false : true
+        != nil
     }
 
     func isValid<T>() -> Bool where Element == WrappedEvent<Cachable.Event<T>> {
-        compactMap {
+        reversed().first {
             switch $0.event {
             case .value(let value):
                 switch value {
-                case .policy(_):
-                    return value
-                default:
-                    return nil
+                case .policy: return value.satisfiesPolicy
+                default: return false
                 }
-            default:
-                return nil
+            case .failure: return false
+            default: return false
             }
         }
-        .contains { $0.shouldCache == false } ? false : true
+        != nil
     }
 }
 
 extension Cachable.Event {
-    var shouldCache: Bool {
-        switch self { // order is important here
+    var satisfiesPolicy: Bool {
+        switch self {
         case .policy(.never): 
             return false
         case .policy(.until(let expiration)):
@@ -279,17 +275,6 @@ extension Cachable.Event {
         case .policy(.always):
             return true
         default: return true
-        }
-    }
-}
-
-extension Collection {
-    func didFinishWithError<T>() -> Bool where Element == WrappedEvent<T> {
-        contains {
-            switch $0.event {
-            case .failure: return true
-            default: return false
-            }
         }
     }
 }

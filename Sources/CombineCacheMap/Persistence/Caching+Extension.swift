@@ -132,6 +132,8 @@ extension Cachable.Value {
         Cachable.ConditionalValue <V, E>.init {
             self
                 .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
                 .appending { .policy(conditions($0.compactMap(\.value))) }
         }
     }
@@ -141,7 +143,11 @@ extension Cachable.Value {
     ) -> Cachable.ConditionalValue<V, E> where V: Codable {
         Cachable.ConditionalValue <V, E> {
             Publishers
-                .flatMapMeasured { value } // 😀
+                .flatMapMeasured {
+                    value
+                        .compactMap(\.value)
+                        .map(Cachable.Event.value)
+                }
                 .appending {
                     .value(.policy(
                         conditions(
@@ -161,6 +167,8 @@ extension Cachable.Value {
         Cachable.ConditionalValue <V, E> {
             self
                 .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
                 .appending { .policy(.until(condition($0.compactMap(\.value)))) }
         }
     }
@@ -171,6 +179,8 @@ extension Cachable.Value {
         Cachable.ConditionalValue <V, E> {
             self
                 .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
                 .appending {
                     condition($0.compactMap(\.value))
                     ? .policy(.always)
@@ -184,7 +194,11 @@ extension Cachable.Value {
     ) -> Cachable.ConditionalValue<V, E> {
         Cachable.ConditionalValue {
             Publishers
-                .flatMapMeasured { value } // 😀
+                .flatMapMeasured { 
+                    value
+                        .compactMap(\.value)
+                        .map(Cachable.Event.value)
+                }
                 .map {
                     switch $0 {
                     case .value(let value): 
@@ -203,7 +217,6 @@ extension Cachable.Value {
         Cachable.Value <V, E> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map(Cachable.Event.value)
@@ -219,7 +232,6 @@ extension Cachable.Value {
         Cachable.Value <V, Never> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map(Cachable.Event.value)
@@ -235,7 +247,6 @@ extension Cachable.Value {
         Cachable.Value <V, Never> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     Just(replacement(error))
                         .map(Cachable.Event.value)
@@ -260,7 +271,6 @@ extension Cachable.ConditionalValue {
         Cachable.ConditionalValue <V, E> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map(Cachable.Event.value)
@@ -276,7 +286,6 @@ extension Cachable.ConditionalValue {
         Cachable.ConditionalValue <V, Never> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map(Cachable.Event.value)
@@ -292,7 +301,6 @@ extension Cachable.ConditionalValue {
         Cachable.ConditionalValue <V, Never> {
             self
                 .value
-                .append(.policy(.always))
                 .catch { error in
                     Just(replacement(error))
                         .map(Cachable.Event.value)

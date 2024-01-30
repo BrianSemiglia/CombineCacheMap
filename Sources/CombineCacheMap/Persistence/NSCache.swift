@@ -8,7 +8,7 @@ extension Persisting {
         Persisting<K, Cachable.Event<V>>(
             backing:TypedCache<K, Cachable.Event<V>>(),
             set: { cache, value, key in
-                if value.shouldCache {
+                if value.satisfiesPolicy {
                     cache.setObject(
                         value,
                         forKey: key
@@ -61,13 +61,13 @@ extension Persisting {
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.isValid() == false || memory.didFinishWithError() {
+                    if memory.isValid() {
+                        backing.memory.setObject(memory, forKey: key)
+                        return Publishers.publisher(from: memory)
+                    } else {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         return nil
-                    } else {
-                        backing.memory.setObject(memory, forKey: key)
-                        return Publishers.publisher(from: memory)
                     }
                 } else {
                     return nil
@@ -117,13 +117,13 @@ extension Persisting {
                     ).eraseToAnyPublisher()
                 } else if let memory = backing.memory.object(forKey: key) {
                     // 3. Further gets come from memory
-                    if memory.isValid() == false || memory.didFinishWithError() {
+                    if memory.isValid() {
+                        backing.memory.setObject(memory, forKey: key)
+                        return Publishers.publisher(from: memory)
+                    } else {
                         backing.writes.removeObject(forKey: key)
                         backing.memory.removeObject(forKey: key)
                         return nil
-                    } else {
-                        backing.memory.setObject(memory, forKey: key)
-                        return Publishers.publisher(from: memory)
                     }
                 } else {
                     return nil
