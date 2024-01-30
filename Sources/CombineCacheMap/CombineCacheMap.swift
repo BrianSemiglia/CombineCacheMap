@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-extension Publisher {
+extension Publisher where Output: Hashable {
 
     /**
      Caches events and replays when latest incoming value equals a previous else produces new events.
@@ -10,7 +10,7 @@ extension Publisher {
     public func map<T>(
         cache: Persisting<Self.Output, Cachable.Event<T>>,
         transform: @escaping (Self.Output) -> T
-    ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Self.Failure> {
         map(
             cache: cache,
             transform: { .value(transform($0)) }
@@ -20,7 +20,7 @@ extension Publisher {
     private func map<T>(
         cache: Persisting<Self.Output, Cachable.Event<T>>,
         transform: @escaping (Self.Output) -> Cachable.Event<T>
-    ) -> AnyPublisher<T, Self.Failure> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Self.Failure> {
         self
             .cachingOutput(of: transform, to: cache)
             .compactMap(\.value)
@@ -30,7 +30,7 @@ extension Publisher {
     public func map<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         flatMap(
             cache: cache,
             transform: { transform($0).value }
@@ -40,7 +40,7 @@ extension Publisher {
     public func map<T>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, Never>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, Never>
-    ) -> AnyPublisher<T, Never> where Self.Output: Hashable, Self.Failure == Never {
+    ) -> AnyPublisher<T, Never> where Self.Failure == Never {
         flatMap(
             cache: cache,
             transform: { transform($0).value }
@@ -54,7 +54,7 @@ extension Publisher {
     public func flatMap<T, E: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, E>>,
         transform: @escaping (Self.Output) -> AnyPublisher<T, E>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         flatMap(
             cache: cache,
             transform: {
@@ -69,7 +69,7 @@ extension Publisher {
     public func flatMap<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         flatMap(
             cache: cache,
             transform: { transform($0).value }
@@ -79,7 +79,7 @@ extension Publisher {
     private func flatMap<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> AnyPublisher<Cachable.Event<T>, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         self
             .cachingOutput(of: transform, to: cache)
             .mapError { $0 as Error }
@@ -92,7 +92,7 @@ extension Publisher {
     private func flatMap<T>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, Never>>,
         transform: @escaping (Self.Output) -> AnyPublisher<Cachable.Event<T>, Never>
-    ) -> AnyPublisher<T, Never> where Self.Output: Hashable, Self.Failure == Never {
+    ) -> AnyPublisher<T, Never> where Self.Failure == Never {
         self
             .cachingOutput(of: transform, to: cache)
             .map { $0.compactMap(\.value) }
@@ -110,7 +110,7 @@ extension Publisher {
     public func flatMapLatest<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> AnyPublisher<T, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         self
             .flatMapLatest(
                 cache: cache,
@@ -127,7 +127,7 @@ extension Publisher {
     public func flatMapLatest<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         flatMapLatest(
             cache: cache,
             transform: { transform($0).value }
@@ -138,7 +138,7 @@ extension Publisher {
     private func flatMapLatest<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> AnyPublisher<Cachable.Event<T>, F>
-    ) -> AnyPublisher<T, Error> where Self.Output: Hashable {
+    ) -> AnyPublisher<T, Error> {
         self
             .cachingOutput(of: transform, to: cache)
             .mapError { $0 as Error }
@@ -150,7 +150,7 @@ extension Publisher {
     private func flatMapLatest<T>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, Never>>,
         transform: @escaping (Self.Output) -> AnyPublisher<Cachable.Event<T>, Never>
-    ) -> AnyPublisher<T, Never> where Self.Output: Hashable, Self.Failure == Never {
+    ) -> AnyPublisher<T, Never> where Self.Failure == Never {
         self
             .cachingOutput(of: transform, to: cache)
             .map { $0.compactMap(\.value) }
@@ -161,7 +161,7 @@ extension Publisher {
     private func cachingOutput<U>(
         of input: @escaping (Self.Output) -> U,
         to cache: Persisting<Self.Output, U>
-    ) -> AnyPublisher<U, Self.Failure> where Self.Output: Hashable {
+    ) -> AnyPublisher<U, Self.Failure> {
         scan((
             cache: cache,
             key: Optional<Self.Output>.none,
@@ -188,25 +188,6 @@ extension Publisher {
             .multicast(subject: UnboundReplaySubject())
             .autoconnect()
             .eraseToAnyPublisher()
-    }
-}
-
-private extension DispatchTimeInterval {
-    var seconds: Double? {
-        switch self {
-        case .seconds(let value):
-            return Double(value)
-        case .milliseconds(let value):
-            return Double(value) * 0.001
-        case .microseconds(let value):
-            return Double(value) * 0.000001
-        case .nanoseconds(let value):
-            return Double(value) * 0.000000001
-        case .never:
-            return nil
-        @unknown default:
-            return nil
-        }
     }
 }
 

@@ -63,7 +63,7 @@ struct TypedCache<Key, Value> {
 }
 
 public enum Cachable {
-    public enum Span: Codable, Hashable {
+    public enum Span: Codable {
         case always
         case until(Date)
         case never
