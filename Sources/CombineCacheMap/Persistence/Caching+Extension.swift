@@ -126,12 +126,12 @@ extension Publisher {
 
 extension Cachable.Value {
     public func cachingWithConditions(
-        conditions: @escaping ([Cachable.Event<V>]) -> Cachable.Span
+        conditions: @escaping ([V]) -> Cachable.Span
     ) -> Cachable.Value<V, E> where V: Codable {
         Cachable.Value <V, E> {
             self
                 .value
-                .appending { .policy(conditions($0)) }
+                .appending { .policy(conditions($0.compactMap(\.value))) }
         }
     }
 
@@ -155,23 +155,23 @@ extension Cachable.Value {
     }
 
     public func cachingUntil(
-        condition: @escaping ([Cachable.Event<V>]) -> Date
+        condition: @escaping ([V]) -> Date
     ) -> Cachable.Value<V, E> {
         Cachable.Value <V, E> {
             self
                 .value
-                .appending { .policy(.until(condition($0))) }
+                .appending { .policy(.until(condition($0.compactMap(\.value)))) }
         }
     }
 
     public func cachingWhen(
-        condition: @escaping ([Cachable.Event<V>]) -> Bool
+        condition: @escaping ([V]) -> Bool
     ) -> Cachable.Value<V, E> {
         Cachable.Value <V, E> {
             self
                 .value
-                .appending { sum in
-                    condition(sum)
+                .appending {
+                    condition($0.compactMap(\.value))
                     ? .policy(.always)
                     : .policy(.never)
                 }
