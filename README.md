@@ -2,50 +2,62 @@
 
 ## Description
 
-Cache/memoize the output of `Combine.Publishers`. Also available for RxSwift: https://github.com/BrianSemiglia/RxCacheMap
+Cache/memoize the output of `Combine.Publishers`.
 
 ## Usage
 
-Aside from caching, all functions work like their non-cache Combine-counterparts. Persisting to disk requires that publisher output be `Codable`.
+Aside from caching, all functions work like their non-cache Combine-counterparts. Incoming event types are required to be `Hasable`. Persisting to disk requires that map/flatMap output be `Codable`.
 
 ```swift
+// Caching
+
 events.map(cache: .memory()) { x -> Value in
-    // Closure executed once per unique `x`, replayed when not unique.
+    // Function executed once per unique `x`, replayed when not.
     expensiveOperation(x)
 }
 
-events.map(cache: .memory(), whenExceeding: .seconds(1)) { x -> Value in
-    // Replayed when operation of unique value takes 
-    // longer than specified duration.
-    expensiveOperation(x)
+events.flatMap(cache: .memory()) { x -> Value in
+    // Publisher executed once per unique `x`, replayed when not.
+    Just(expensiveOperation(x))
 }
 
 // Conditional caching
 
-events.flatMap(cache: .disk(id: "foo")) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
-    // Replayed when input not unique and output not expired
+events.map(cache: .memory()) { x -> Value in
+    Cachable.Value { expensiveOperation(x) }.cachingWhen { outputOnceComplete in return true }
+}
+
+events.flatMap(cache: .disk(id: "foo")) { x in
     expensiveOperationPublisher(x).cachingUntil { outputOnceComplete in
         Date() + hours(1)
     }
 }
 
-events.flatMap(cache: .memory()) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
-    // Replayed when input not unique and output qualifies
+events.flatMap(cache: .memory()) { x in
     expensiveOperationPublisher(x).cachingWhen { outputOnceComplete in
         return true
     }
 }
 
-events.flatMap(cache: .memory()) { x -> AnyPublisher<CachingEvent<Value>, Failure> in
-    // Errors are not cached. Replaced errors are also not cached.
-    expensiveOperationPublisher(x).replacingErrorsWithUncached { error in
-        return Just(...)
+events.flatMap(cache: .memory()) { x in
+    expensiveOperationPublisher(x).cachingWhenExceeding(
+        duration: seconds(1)
+    )
+}
+
+events.flatMap(cache: .memory()) { x in
+    expensiveOperationPublisher(x).cachingWithPolicy { (computeDuration, outputOnceComplete) in
+        myCondition || computeDuration > 10 
+            ? Span.always 
+            : Span.until(Date() + hours(1))
     }
 }
 
-// Use your own cache or the included .memory and .disk stores.
-events.cacheMap(cache: MyCache()) { x -> Value in
-    expensiveOperation(x)
+events.flatMap(cache: .memory()) { x in
+    // Errors are not cached. Replaced errors are also not cached.
+    expensiveOperationPublisher(x).replacingErrorsWithUncached { error in
+        Just(replacement)
+    }
 }
 ```
 
