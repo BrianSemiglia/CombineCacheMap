@@ -9,6 +9,36 @@ import Foundation
 import Combine
 
 extension Publisher {
+    public func cachingWithConditions(
+        conditions: @escaping ([Output]) -> Cachable.Span
+    ) -> Cachable.Value<Output, Failure> where Output: Codable {
+        Cachable.Value {
+            self
+                .map(Cachable.Event.value)
+                .appending { .policy(conditions($0.compactMap(\.value))) }
+                .eraseToAnyPublisher()
+        }
+    }
+
+    public func cachingWithConditions(
+        conditions: @escaping (TimeInterval, [Output]) -> Cachable.Span
+    ) -> Cachable.Value<Output, Failure> where Output: Codable {
+        Cachable.Value {
+            Publishers
+                .flatMapMeasured { self.map(Cachable.Event.value) } // 😀
+                .appending {
+                    .value(.policy(
+                        conditions(
+                            $0.last!.duration!,
+                            $0.compactMap(\.value).compactMap(\.value)
+                        )
+                    ))
+                }
+                .compactMap(\.value)
+                .eraseToAnyPublisher()
+        }
+    }
+
     public func cachingUntil(
         condition: @escaping ([Output]) -> Date
     ) -> Cachable.Value<Output, Failure> where Output: Codable {
@@ -95,6 +125,35 @@ extension Publisher {
 }
 
 extension Cachable.Value {
+    public func cachingWithConditions(
+        conditions: @escaping ([Cachable.Event<V>]) -> Cachable.Span
+    ) -> Cachable.Value<V, E> where V: Codable {
+        Cachable.Value <V, E> {
+            self
+                .value
+                .appending { .policy(conditions($0)) }
+        }
+    }
+
+    public func cachingWithConditions(
+        conditions: @escaping (TimeInterval, [V]) -> Cachable.Span
+    ) -> Cachable.Value<V, E> where V: Codable {
+        Cachable.Value <V, E> {
+            Publishers
+                .flatMapMeasured { value } // 😀
+                .appending {
+                    .value(.policy(
+                        conditions(
+                            $0.last!.duration!,
+                            $0.compactMap(\.value).compactMap(\.value)
+                        )
+                    ))
+                }
+                .compactMap(\.value)
+                .eraseToAnyPublisher()
+        }
+    }
+
     public func cachingUntil(
         condition: @escaping ([Cachable.Event<V>]) -> Date
     ) -> Cachable.Value<V, E> {
@@ -102,7 +161,6 @@ extension Cachable.Value {
             self
                 .value
                 .appending { .policy(.until(condition($0))) }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -126,7 +184,6 @@ extension Cachable.Value {
         Cachable.Value {
             Publishers
                 .flatMapMeasured { value } // 😀
-                .print()
                 .map {
                     switch $0 {
                     case .value(let value): 

@@ -1359,4 +1359,139 @@ final class CombineCacheMapTests: XCTestCase {
         )
         XCTAssertEqual(cacheMisses, 4)
     }
+
+    func testMapConditionalCachingAlways_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { _ in .always }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testMapConditionalCachingNever_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { _ in .never }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
+    }
+
+    func testMapConditionalCachingUntilAlways_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { _ in .until(Date.distantFuture) }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testMapConditionalCachingUntilNever_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { _ in .until(Date.distantPast) }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
+    }
+
+    func testMapConditionalCachingWhenExceedingTrue_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        Thread.sleep(forTimeInterval: 2)
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { (duration: TimeInterval, outputs: [Int]) in
+                        duration > 0 ? .always : .never
+                    }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 1)
+    }
+
+    func testMapConditionalCachingWhenExceedingFalse_Memory() {
+        struct Foo: Error {}
+        var cacheMisses: Int = 0
+        try XCTAssertEqual(
+            [1, 1, 1, 1]
+                .publisher
+                .flatMap(cache: .memory()) { x in
+                    AnyPublisher.create {
+                        cacheMisses += 1
+                        $0.send(1)
+                        $0.send(completion: .finished)
+                        return AnyCancellable {}
+                    }
+                    .cachingWithConditions { (duration: TimeInterval, outputs: [Int]) in
+                        duration > 99 ? .always : .never
+                    }
+                }
+                .toBlocking(),
+            [1, 1, 1, 1]
+        )
+        XCTAssertEqual(cacheMisses, 4)
+    }
 }
