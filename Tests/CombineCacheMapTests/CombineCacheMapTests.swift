@@ -701,7 +701,6 @@ final class CombineCacheMapTests: XCTestCase {
                         return x
                     }
                     .cachingWhenExceeding(duration: 1)
-                    .replacingErrorsWithUncached { _ in 99 }
                 }
                 .map { $0 }
                 .toBlocking(),
@@ -998,9 +997,7 @@ final class CombineCacheMapTests: XCTestCase {
                         }
                     }
                     .mapError { $0 as Error }
-                    .replacingErrorsWithUncached { error in
-                        Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
-                    }
+                    .replacingErrorsWithUncached { error in 99 }
                 }
                 .toBlocking(timeout: 10),
             [2, 4, 99]
@@ -1061,19 +1058,19 @@ final class CombineCacheMapTests: XCTestCase {
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
             Caching(value: $0)
-            .cachingWhen { _ in true }
+                .cachingWhen { _ in true }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
             Caching(value: $0)
-            .cachingUntil { _ in Date() }
+                .cachingUntil { _ in Date() }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
             Caching(value: $0)
-            .cachingWhenExceeding(duration: 1)
+                .cachingWhenExceeding(duration: 1)
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
             Caching(value: $0)
-//            .replacingErrorsWithUncached { _ in 99 } // Compilation prevented as maps aren't failable.
+                .replacingErrorsWithUncached { _ in 99 }
         }
 
 
@@ -1096,11 +1093,22 @@ final class CombineCacheMapTests: XCTestCase {
                 .replacingErrorsWithUncached{ _ in
                     Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
                 }
+                .replacingErrorsWithUncached{ _ in
+                    Just(99).eraseToAnyPublisher()
+                }
+                .replacingErrorsWithUncached{ _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+                .replacingErrorsWithUncached{ _ in 99 }
                 .replacingErrorsWithUncached{ _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
@@ -1280,9 +1288,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
-struct HashedBy<Identity>: Hashable where Identity: Hashable {
-    let identity: Identity
-    let value: String
     func testMapValidationReconciliationCachingWhenFalse_Memory() {
         struct Foo: Error {}
         var cacheMisses: Int = 0
@@ -1307,8 +1312,6 @@ struct HashedBy<Identity>: Hashable where Identity: Hashable {
         XCTAssertEqual(cacheMisses, 4)
     }
 
-    static func == (lhs: HashedBy, rhs: HashedBy) -> Bool {
-        return lhs.identity == rhs.identity
     func testMapValidationReconciliationCachingUntilFalse_Memory() {
         struct Foo: Error {}
         var cacheMisses: Int = 0
@@ -1333,8 +1336,6 @@ struct HashedBy<Identity>: Hashable where Identity: Hashable {
         XCTAssertEqual(cacheMisses, 4)
     }
 
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(identity)
     func testMapValidationReconciliationCachingWhenExceedingFalse_Memory() {
         struct Foo: Error {}
         var cacheMisses: Int = 0

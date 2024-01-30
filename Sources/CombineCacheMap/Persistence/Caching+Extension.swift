@@ -54,9 +54,24 @@ extension Publisher {
 
     public func replacingErrorsWithUncached<P: Publisher>(
         replacement: @escaping (Self.Failure) -> P
+    ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, P.Output == Self.Output, P.Failure == Failure {
+        replacingErrorsWithUncached(replacement: replacement, type: P.Failure.self)
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Self.Failure) -> P
+    ) -> Caching<Self.Output, Never> where Self.Output: Codable, P.Output == Self.Output, P.Failure == Never {
+        replacingErrorsWithUncached(replacement: replacement, type: P.Failure.self)
+    }
+
+    private func replacingErrorsWithUncached<E: Error, P: Publisher>(
+        replacement: @escaping (Self.Failure) -> P,
+        type: E.Type
+    ) -> Caching<Output, E> where Output: Codable, P.Output == Output, P.Failure == E {
         Caching {
             self
                 .map { .value($0) }
+                .append(CachingEvent.policy(.always))
                 .catch { error in
                     replacement(error)
                         .map { .value($0) }
@@ -66,9 +81,15 @@ extension Publisher {
         }
     }
 
+    public func replacingErrorsWithUncached<T>(
+        replacement: @escaping (Self.Failure) -> T
+    ) -> Caching<Self.Output, Never> where Self.Output: Codable, T == Self.Output {
+        replacingErrorsWithUncached { Just(replacement($0)).eraseToAnyPublisher() }
     }
 
+    public func replacingErrorsWithUncached(
         replacement: @escaping (Self.Failure) -> Never
+    ) -> Caching<Self.Output, Self.Failure> where Self.Output: Codable, Self.Failure == Never {
         fatalError()
     }
 }
@@ -134,14 +155,41 @@ extension Caching {
         }
     }
 
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (E) -> P
+    ) -> Caching<V, Never> where V: Codable, P.Output == V, P.Failure == Never {
+        Caching <V, Never> {
+            self
+                .value
+                .append(.policy(.always))
+                .catch { error in
+                    replacement(error)
+                        .map(CachingEvent.value)
+                        .append(.policy(.never))
+                }
+                .eraseToAnyPublisher()
+        }
     }
 
     public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> V
+    ) -> Caching<V, Never> where V: Codable {
+        Caching <V, Never> {
+            self
+                .value
+                .append(.policy(.always))
+                .catch { error in
+                    Just(replacement(error))
+                        .map(CachingEvent.value)
+                        .append(.policy(.never))
+                }
+                .eraseToAnyPublisher()
+        }
     }
 
     public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> Never
+    ) -> Caching<V, E> where V: Codable, E == Never {
         fatalError()
     }
 }
