@@ -81,6 +81,14 @@ public enum Cachable {
             self.value = Deferred { value() }.eraseToAnyPublisher()
         }
     }
+
+    public struct ConditionalValue<V, E: Error> where V: Codable {
+        public let value: AnyPublisher<Cachable.Event<V>, E>
+
+        init(value: @escaping () -> AnyPublisher<Cachable.Event<V>, E>) {
+            self.value = Deferred { value() }.eraseToAnyPublisher()
+        }
+    }
 }
 
 
@@ -104,6 +112,13 @@ extension Cachable.Event {
     var value: T? {
         switch self {
         case .value(let value): return value
+        default: return nil
+        }
+    }
+
+    var policy: Cachable.Span? {
+        switch self {
+        case .policy(let span): return span
         default: return nil
         }
     }

@@ -47,6 +47,26 @@ extension Publisher where Output: Hashable {
         )
     }
 
+    public func map<T, F: Error>(
+        cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
+        transform: @escaping (Self.Output) -> Cachable.ConditionalValue<T, F>
+    ) -> AnyPublisher<T, Error> {
+        flatMap(
+            cache: cache,
+            transform: { transform($0).value }
+        )
+    }
+
+    public func map<T>(
+        cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, Never>>,
+        transform: @escaping (Self.Output) -> Cachable.ConditionalValue<T, Never>
+    ) -> AnyPublisher<T, Never> where Self.Failure == Never {
+        flatMap(
+            cache: cache,
+            transform: { transform($0).value }
+        )
+    }
+
     /**
      Caches publishers and replays their events when latest incoming value equals a previous else produces new events.
      */
@@ -69,6 +89,16 @@ extension Publisher where Output: Hashable {
     public func flatMap<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, F>
+    ) -> AnyPublisher<T, Error> {
+        flatMap(
+            cache: cache,
+            transform: { transform($0).value }
+        )
+    }
+
+    public func flatMap<T, F: Error>(
+        cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
+        transform: @escaping (Self.Output) -> Cachable.ConditionalValue<T, F>
     ) -> AnyPublisher<T, Error> {
         flatMap(
             cache: cache,
@@ -127,6 +157,16 @@ extension Publisher where Output: Hashable {
     public func flatMapLatest<T, F: Error>(
         cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
         transform: @escaping (Self.Output) -> Cachable.Value<T, F>
+    ) -> AnyPublisher<T, Error> {
+        flatMapLatest(
+            cache: cache,
+            transform: { transform($0).value }
+        )
+    }
+
+    public func flatMapLatest<T, F: Error>(
+        cache: Persisting<Self.Output, AnyPublisher<Cachable.Event<T>, F>>,
+        transform: @escaping (Self.Output) -> Cachable.ConditionalValue<T, F>
     ) -> AnyPublisher<T, Error> {
         flatMapLatest(
             cache: cache,

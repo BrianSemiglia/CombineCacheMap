@@ -1090,26 +1090,26 @@ final class CombineCacheMapTests: XCTestCase {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
-                .replacingErrorsWithUncached{ _ in
+                .replacingErrorsWithUncached { _ in
                     Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
                 }
-                .replacingErrorsWithUncached{ _ in
+                .replacingErrorsWithUncached { _ in
                     Just(99).eraseToAnyPublisher()
                 }
-                .replacingErrorsWithUncached{ _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
-                .replacingErrorsWithUncached{ _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
-                .replacingErrorsWithUncached{ _ in 99 }
-                .replacingErrorsWithUncached{ _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
             Just($0)
@@ -1135,7 +1135,7 @@ final class CombineCacheMapTests: XCTestCase {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
-                .replacingErrorsWithUncached{ _ in
+                .replacingErrorsWithUncached { _ in
                     Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
                 }
         }
@@ -1143,7 +1143,7 @@ final class CombineCacheMapTests: XCTestCase {
             Just($0)
                 .setFailureType(to: Error.self)
                 .eraseToAnyPublisher()
-                .replacingErrorsWithUncached{ _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
         }
         _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
             Just($0)
@@ -1288,78 +1288,6 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
-    func testMapValidationReconciliationCachingWhenFalse_Memory() {
-        struct Foo: Error {}
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 1, 1, 1]
-                .publisher
-                .flatMap(cache: .memory()) { x in
-                    AnyPublisher.create {
-                        cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
-                        $0.send(1)
-                        $0.send(completion: .finished)
-                        return AnyCancellable {}
-                    }
-                    .cachingWhen { _ in false }               // false
-                    .cachingUntil { _ in Date.distantFuture } // true
-                    .cachingWhenExceeding(duration: -1)       // true
-                }
-                .toBlocking(),
-            [1, 1, 1, 1]
-        )
-        XCTAssertEqual(cacheMisses, 4)
-    }
-
-    func testMapValidationReconciliationCachingUntilFalse_Memory() {
-        struct Foo: Error {}
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 1, 1, 1]
-                .publisher
-                .flatMap(cache: .memory()) { x in
-                    AnyPublisher.create {
-                        cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
-                        $0.send(1)
-                        $0.send(completion: .finished)
-                        return AnyCancellable {}
-                    }
-                    .cachingWhen { _ in true }                // true
-                    .cachingUntil { _ in Date.distantPast }   // false
-                    .cachingWhenExceeding(duration: -1)       // true
-                }
-                .toBlocking(),
-            [1, 1, 1, 1]
-        )
-        XCTAssertEqual(cacheMisses, 4)
-    }
-
-    func testMapValidationReconciliationCachingWhenExceedingFalse_Memory() {
-        struct Foo: Error {}
-        var cacheMisses: Int = 0
-        try XCTAssertEqual(
-            [1, 1, 1, 1]
-                .publisher
-                .flatMap(cache: .memory()) { x in
-                    AnyPublisher.create {
-                        cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
-                        $0.send(1)
-                        $0.send(completion: .finished)
-                        return AnyCancellable {}
-                    }
-                    .cachingWhen { _ in true }                // true
-                    .cachingUntil { _ in Date.distantFuture } // true
-                    .cachingWhenExceeding(duration: 99)       // true
-                }
-                .toBlocking(),
-            [1, 1, 1, 1]
-        )
-        XCTAssertEqual(cacheMisses, 4)
-    }
-
     func testMapConditionalCachingAlways_Memory() {
         struct Foo: Error {}
         var cacheMisses: Int = 0
@@ -1374,7 +1302,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { _ in .always }
+                    .cachingWithPolicy { _ in .always }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -1396,7 +1324,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { _ in .never }
+                    .cachingWithPolicy { _ in .never }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -1418,7 +1346,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { _ in .until(Date.distantFuture) }
+                    .cachingWithPolicy { _ in .until(Date.distantFuture) }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -1440,7 +1368,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { _ in .until(Date.distantPast) }
+                    .cachingWithPolicy { _ in .until(Date.distantPast) }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -1462,7 +1390,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { (duration: TimeInterval, outputs: [Int]) in
+                    .cachingWithPolicy { (duration: TimeInterval, outputs: [Int]) in
                         duration > 0 ? .always : .never
                     }
                 }
@@ -1485,7 +1413,7 @@ final class CombineCacheMapTests: XCTestCase {
                         $0.send(completion: .finished)
                         return AnyCancellable {}
                     }
-                    .cachingWithConditions { (duration: TimeInterval, outputs: [Int]) in
+                    .cachingWithPolicy { (duration: TimeInterval, outputs: [Int]) in
                         duration > 99 ? .always : .never
                     }
                 }

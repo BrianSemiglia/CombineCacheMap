@@ -9,7 +9,7 @@ import Foundation
 import Combine
 
 extension Publisher {
-    public func cachingWithConditions(
+    public func cachingWithPolicy(
         conditions: @escaping ([Output]) -> Cachable.Span
     ) -> Cachable.Value<Output, Failure> where Output: Codable {
         Cachable.Value {
@@ -20,7 +20,7 @@ extension Publisher {
         }
     }
 
-    public func cachingWithConditions(
+    public func cachingWithPolicy(
         conditions: @escaping (TimeInterval, [Output]) -> Cachable.Span
     ) -> Cachable.Value<Output, Failure> where Output: Codable {
         Cachable.Value {
@@ -117,6 +117,7 @@ extension Publisher {
         replacingErrorsWithUncached { Just(replacement($0)).eraseToAnyPublisher() }
     }
 
+    @available (*, unavailable)
     public func replacingErrorsWithUncached(
         replacement: @escaping (Self.Failure) -> Never
     ) -> Cachable.Value<Self.Output, Self.Failure> where Self.Output: Codable, Self.Failure == Never {
@@ -125,20 +126,20 @@ extension Publisher {
 }
 
 extension Cachable.Value {
-    public func cachingWithConditions(
+    public func cachingWithPolicy(
         conditions: @escaping ([V]) -> Cachable.Span
-    ) -> Cachable.Value<V, E> where V: Codable {
-        Cachable.Value <V, E> {
+    ) -> Cachable.ConditionalValue<V, E> where V: Codable {
+        Cachable.ConditionalValue <V, E>.init {
             self
                 .value
                 .appending { .policy(conditions($0.compactMap(\.value))) }
         }
     }
 
-    public func cachingWithConditions(
+    public func cachingWithPolicy(
         conditions: @escaping (TimeInterval, [V]) -> Cachable.Span
-    ) -> Cachable.Value<V, E> where V: Codable {
-        Cachable.Value <V, E> {
+    ) -> Cachable.ConditionalValue<V, E> where V: Codable {
+        Cachable.ConditionalValue <V, E> {
             Publishers
                 .flatMapMeasured { value } // 😀
                 .appending {
@@ -156,8 +157,8 @@ extension Cachable.Value {
 
     public func cachingUntil(
         condition: @escaping ([V]) -> Date
-    ) -> Cachable.Value<V, E> {
-        Cachable.Value <V, E> {
+    ) -> Cachable.ConditionalValue<V, E> {
+        Cachable.ConditionalValue <V, E> {
             self
                 .value
                 .appending { .policy(.until(condition($0.compactMap(\.value)))) }
@@ -166,8 +167,8 @@ extension Cachable.Value {
 
     public func cachingWhen(
         condition: @escaping ([V]) -> Bool
-    ) -> Cachable.Value<V, E> {
-        Cachable.Value <V, E> {
+    ) -> Cachable.ConditionalValue<V, E> {
+        Cachable.ConditionalValue <V, E> {
             self
                 .value
                 .appending {
@@ -180,8 +181,8 @@ extension Cachable.Value {
 
     public func cachingWhenExceeding(
         duration limit: TimeInterval
-    ) -> Cachable.Value<V, E> {
-        Cachable.Value {
+    ) -> Cachable.ConditionalValue<V, E> {
+        Cachable.ConditionalValue {
             Publishers
                 .flatMapMeasured { value } // 😀
                 .map {
@@ -244,9 +245,67 @@ extension Cachable.Value {
         }
     }
 
+    @available (*, unavailable)
     public func replacingErrorsWithUncached(
         replacement: @escaping (E) -> Never
     ) -> Cachable.Value<V, E> where V: Codable, E == Never {
+        fatalError()
+    }
+}
+
+extension Cachable.ConditionalValue {
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (E) -> P
+    ) -> Cachable.ConditionalValue<V, E> where V: Codable, P.Output == V, P.Failure == E {
+        Cachable.ConditionalValue <V, E> {
+            self
+                .value
+                .append(.policy(.always))
+                .catch { error in
+                    replacement(error)
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+                .eraseToAnyPublisher()
+        }
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (E) -> P
+    ) -> Cachable.ConditionalValue<V, Never> where V: Codable, P.Output == V, P.Failure == Never {
+        Cachable.ConditionalValue <V, Never> {
+            self
+                .value
+                .append(.policy(.always))
+                .catch { error in
+                    replacement(error)
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+                .eraseToAnyPublisher()
+        }
+    }
+
+    public func replacingErrorsWithUncached(
+        replacement: @escaping (E) -> V
+    ) -> Cachable.ConditionalValue<V, Never> where V: Codable {
+        Cachable.ConditionalValue <V, Never> {
+            self
+                .value
+                .append(.policy(.always))
+                .catch { error in
+                    Just(replacement(error))
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+                .eraseToAnyPublisher()
+        }
+    }
+
+    @available (*, unavailable)
+    public func replacingErrorsWithUncached(
+        replacement: @escaping (E) -> Never
+    ) -> Cachable.ConditionalValue<V, E> where V: Codable, E == Never {
         fatalError()
     }
 }
