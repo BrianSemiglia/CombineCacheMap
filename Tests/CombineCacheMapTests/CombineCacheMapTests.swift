@@ -70,7 +70,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingWhen { _ in true }
+                    return Cachable.Value(value: cacheMisses).cachingWhen { _ in true }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -92,7 +92,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .disk(id: id)) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingWhen { _ in true }
+                    return Cachable.Value(value: cacheMisses).cachingWhen { _ in true }
                 }
                 .toBlocking(),
             [1, 1, 1, 1]
@@ -110,7 +110,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingWhen { _ in false }
+                    return Cachable.Value(value: cacheMisses).cachingWhen { _ in false }
                 }
                 .toBlocking(),
             [1, 2, 3, 4]
@@ -132,7 +132,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .disk(id: id)) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingWhen { _ in false }
+                    return Cachable.Value(value: cacheMisses).cachingWhen { _ in false }
                 }
                 .toBlocking(),
             [1, 2, 3, 4]
@@ -150,7 +150,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: .memory()) { _ in
                     cacheMisses += 1
-                    return Caching(value: cacheMisses).cachingUntil { _ in
+                    return Cachable.Value(value: cacheMisses).cachingUntil { _ in
                         cacheMisses > 2
                         ? Date() + 99
                         : Date() - 99
@@ -175,7 +175,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .publisher
                 .map(cache: cache) { _ in
                     cacheMisses += 1
-                    return Caching<Int, Never>(value: cacheMisses).cachingUntil { _ in
+                    return Cachable.Value<Int, Never>(value: cacheMisses).cachingUntil { _ in
                         cacheMisses > 2
                         ? Date() + 99
                         : Date() - 99
@@ -695,7 +695,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
                         return x
@@ -718,7 +718,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
                         return x
@@ -737,7 +737,7 @@ final class CombineCacheMapTests: XCTestCase {
             [3, 1, 3]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: x)
                         return x
@@ -759,7 +759,7 @@ final class CombineCacheMapTests: XCTestCase {
             [3, 1, 3]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: x)
                         return x
@@ -778,7 +778,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .memory()) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 1)
                         return x
@@ -800,7 +800,7 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1]
                 .publisher
                 .map(cache: .disk(id: "\(#function)")) { x in
-                    Caching {
+                    Cachable.Value {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 1)
                         return x
@@ -1054,22 +1054,22 @@ final class CombineCacheMapTests: XCTestCase {
 
     func testFlatMapCaching() {
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(value: $0)
+            Cachable.Value(value: $0)
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(value: $0)
+            Cachable.Value(value: $0)
                 .cachingWhen { _ in true }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(value: $0)
+            Cachable.Value(value: $0)
                 .cachingUntil { _ in Date() }
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(value: $0)
+            Cachable.Value(value: $0)
                 .cachingWhenExceeding(duration: 1)
         }
         _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Caching(value: $0)
+            Cachable.Value(value: $0)
                 .replacingErrorsWithUncached { _ in 99 }
         }
 

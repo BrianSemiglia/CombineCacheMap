@@ -62,30 +62,29 @@ struct TypedCache<Key, Value> {
     }
 }
 
-public enum Cachable {}
-
-public extension Cachable {
-    enum Span: Codable, Hashable {
+public enum Cachable {
+    public enum Span: Codable, Hashable {
         case always
         case until(Date)
         case never
     }
 
-    enum Event<T>: Codable where T: Codable {
+    public enum Event<T>: Codable where T: Codable {
         case value(T)
         case policy(Span)
     }
-}
 
-public struct Caching<V, E: Error> where V: Codable {
-    public let value: AnyPublisher<Cachable.Event<V>, E>
+    public struct Value<V, E: Error> where V: Codable {
+        public let value: AnyPublisher<Cachable.Event<V>, E>
 
-    init(value: @escaping () -> AnyPublisher<Cachable.Event<V>, E>) {
-        self.value = Deferred { value() }.eraseToAnyPublisher()
+        init(value: @escaping () -> AnyPublisher<Cachable.Event<V>, E>) {
+            self.value = Deferred { value() }.eraseToAnyPublisher()
+        }
     }
 }
 
-extension Caching {
+
+extension Cachable.Value {
     public init(value: V) where E == Never {
         self.init { value }
     }
