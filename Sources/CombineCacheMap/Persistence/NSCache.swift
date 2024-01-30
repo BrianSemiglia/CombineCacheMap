@@ -80,7 +80,7 @@ extension Persisting {
         )
     }
 
-    public static func memory<T, E: Error>() -> Persisting<Key, AnyPublisher<CachingEvent<T>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<T>, E> {
+    public static func memory<T>() -> Persisting<Key, AnyPublisher<CachingEvent<T>, Error>> where Key: Codable, Value == AnyPublisher<CachingEvent<T>, Error> {
         Persisting<Key, AnyPublisher<CachingEvent<T>, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<CachingEvent<T>, Error>>(),
