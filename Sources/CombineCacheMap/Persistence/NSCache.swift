@@ -41,7 +41,7 @@ extension Persisting {
                 if let write = backing.writes.object(forKey: key) {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
-                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
+                    backing.writes.removeObject(forKey: key)
 
                     let shared = write.replayingIndefinitely
 
@@ -97,7 +97,7 @@ extension Persisting {
                 if let write = backing.writes.object(forKey: key) {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
-                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
+                    backing.writes.removeObject(forKey: key)
 
                     let shared = write.replayingIndefinitely
 
