@@ -70,8 +70,7 @@ extension Publisher where Output: Hashable {
             id: \.self,
             transform: {
                 Cachable.Value(
-                    value: transform($0),
-                    validity: .always
+                    value: transform($0)
                 )
             }
         )
@@ -114,8 +113,7 @@ extension Publisher where Output: Hashable {
                 id: \.self,
                 transform: {
                     Cachable.Value(
-                        value: transform($0),
-                        validity: .always
+                        value: transform($0)
                     )
                 }
             )
@@ -235,8 +233,7 @@ extension Publisher {
             id: id,
             transform: {
                 Cachable.Value(
-                    value: transform($0),
-                    validity: .always
+                    value: transform($0)
                 )
             }
         )
@@ -309,8 +306,7 @@ extension Publisher {
                 id: id,
                 transform: {
                     Cachable.Value(
-                        value: transform($0),
-                        validity: .always
+                        value: transform($0)
                     )
                 }
             )
@@ -400,7 +396,7 @@ extension Publisher {
 }
 
 private extension Cachable.Value {
-    init(value: AnyPublisher<V, E>, validity: Cachable.Span) {
+    init(value: AnyPublisher<V, E>, validity: Cachable.Span = .always) {
         self.value = value
             .map(Cachable.Event.value)
             .append(.policy(validity))
