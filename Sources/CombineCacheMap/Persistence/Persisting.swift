@@ -74,18 +74,18 @@ public enum Cachable {
         case policy(Span)
     }
 
-    public struct Value<V, E: Error> where V: Codable {
-        public let value: AnyPublisher<Cachable.Event<V>, E>
+    public struct Value<Value, Failure: Error> where Value: Codable {
+        public let value: AnyPublisher<Cachable.Event<Value>, Failure>
 
-        init(value: @escaping () -> AnyPublisher<Cachable.Event<V>, E>) {
+        init(value: @escaping () -> AnyPublisher<Cachable.Event<Value>, Failure>) {
             self.value = Deferred { value() }.eraseToAnyPublisher()
         }
     }
 
-    public struct ConditionalValue<V, E: Error> where V: Codable {
-        public let value: AnyPublisher<Cachable.Event<V>, E>
+    public struct ConditionalValue<Value, Failure: Error> where Value: Codable {
+        public let value: AnyPublisher<Cachable.Event<Value>, Failure>
 
-        init(value: @escaping () -> AnyPublisher<Cachable.Event<V>, E>) {
+        init(value: @escaping () -> AnyPublisher<Cachable.Event<Value>, Failure>) {
             self.value = Deferred { value() }.eraseToAnyPublisher()
         }
     }
@@ -93,16 +93,16 @@ public enum Cachable {
 
 
 extension Cachable.Value {
-    public init(value: V) where E == Never {
+    public init(value: Value) where Failure == Never {
         self.init { value }
     }
 
-    public init(value: @escaping () -> V) where E == Never {
+    public init(value: @escaping () -> Value) where Failure == Never {
         self.init {
             Just(value())
                 .map(Cachable.Event.value)
                 .append(.policy(.always))
-                .setFailureType(to: E.self)
+                .setFailureType(to: Failure.self)
                 .eraseToAnyPublisher()
         }
     }
