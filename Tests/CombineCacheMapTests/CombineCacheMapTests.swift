@@ -953,7 +953,7 @@ final class CombineCacheMapTests: XCTestCase {
             try? [1, 2, 3]
                 .publisher
                 .setFailureType(to: Error.self)
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     Just(())
                         .flatMap {
                             cacheMisses += 1
@@ -987,7 +987,7 @@ final class CombineCacheMapTests: XCTestCase {
             try? [1, 2, 3]
                 .publisher
                 .setFailureType(to: Error.self)
-                .flatMap(cache: .disk(id: id)) { x in
+                .flatMap(cache: .disk(id: id)) { _ in
                     Just(()).flatMap {
                         cacheMisses += 1
                         if cacheMisses == 3 {
@@ -1294,7 +1294,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
@@ -1316,7 +1316,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
@@ -1338,7 +1338,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
@@ -1360,7 +1360,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
@@ -1382,7 +1382,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         Thread.sleep(forTimeInterval: 2)
@@ -1406,7 +1406,7 @@ final class CombineCacheMapTests: XCTestCase {
         try XCTAssertEqual(
             [1, 1, 1, 1]
                 .publisher
-                .flatMap(cache: .memory()) { x in
+                .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
                         $0.send(1)
