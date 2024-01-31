@@ -1,8 +1,8 @@
 # CombineCacheMap
 
-Cache/memoize the output of `Combine.Publishers`.
-
 ```swift
+// Cache/memoize the output of `Combine.Publishers`.
+
 map { (x: Codable) -> Codable in ... } 🪄 map(cache: .memory()) { ... }
 map { (x: Any)     -> Codable in ... } 🪄 map(cache: .memory(), id: \.keyPath) { ... }
 ```
@@ -21,14 +21,14 @@ events.flatMap(cache: .disk(id: "foo")) { incoming in
 }
 ```
 
-## Conditional caching
+## Conditional Caching
 
 ```swift
 // Caching When
 events.map(cache: .memory()) { incoming in
     Cachable
         .Value { expensiveOperation(incoming) }
-        .cachingWhen { outputsOnceComplete in return true }
+        .cachingWhen { outputsOnceComplete in true }
 }
 
 // Caching Until
