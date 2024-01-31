@@ -4,66 +4,67 @@
 
 Cache/memoize the output of `Combine.Publishers`.
 
-## Usage
+```swift
+map { (x: Codable) -> Codable in ... } 🪄 map(cache: .memory()) { ... }
+map { (x: Any)     -> Codable in ... } 🪄 map(cache: .memory(), id: \.keyPath) { ... }
+```
 
-Aside from caching, all functions work like their non-cache Combine-counterparts. Incoming event types are required to be `Hasable`. Persisting to disk requires that map/flatMap output be `Codable`.
+## Usage
 
 ```swift
 // Caching
+// Maps are executed once per unique `incoming`, replayed when not.
 
-events.map(cache: .memory()) { x -> Value in
-    // Function executed once per unique `x`, replayed when not.
-    expensiveOperation(x)
+events.map(cache: .memory()) { incoming in
+    expensiveOperation(incoming)
 }
 
-events.flatMap(cache: .memory()) { x -> Value in
-    // Publisher executed once per unique `x`, replayed when not.
-    Just(expensiveOperation(x))
+events.flatMap(cache: .disk(id: "foo")) { incoming in
+    Just(expensiveOperation(incoming))
 }
 
 // Conditional caching
 
-events.map(cache: .memory()) { x -> Value in
-    Cachable.Value { expensiveOperation(x) }.cachingWhen { outputOnceComplete in return true }
+// Caching When
+events.map(cache: .memory()) { incoming in
+    Cachable
+        .Value { expensiveOperation(incoming) }
+        .cachingWhen { outputOnceComplete in return true }
 }
 
-events.flatMap(cache: .disk(id: "foo")) { x in
-    expensiveOperationPublisher(x).cachingUntil { outputOnceComplete in
-        Date() + hours(1)
-    }
+// Caching Until
+events.flatMap(cache: .disk(id: "foo")) { incoming in
+    expensiveOperationPublisher(incoming)
+        .cachingUntil { outputOnceComplete in Date() + hours(1) }
 }
 
-events.flatMap(cache: .memory()) { x in
-    expensiveOperationPublisher(x).cachingWhen { outputOnceComplete in
-        return true
-    }
+// Caching When Operation Exceeds Duration
+events.flatMap(cache: .disk(id: "foo")) { incoming in
+    expensiveOperationPublisher(incoming)
+        .cachingWhenExceeding(duration: seconds(1))
 }
 
-events.flatMap(cache: .memory()) { x in
-    expensiveOperationPublisher(x).cachingWhenExceeding(
-        duration: seconds(1)
-    )
+// Caching with Policy (for more granular control)
+events.flatMap(cache: .memory()) { incoming in
+    expensiveOperationPublisher(incoming)
+        .cachingWithPolicy { (computeDuration, outputOnceComplete) in
+            myCondition || computeDuration > 10 
+                ? Span.always 
+                : Span.until(Date() + hours(1))
+        }
 }
 
-events.flatMap(cache: .memory()) { x in
-    expensiveOperationPublisher(x).cachingWithPolicy { (computeDuration, outputOnceComplete) in
-        myCondition || computeDuration > 10 
-            ? Span.always 
-            : Span.until(Date() + hours(1))
-    }
-}
-
-events.flatMap(cache: .memory()) { x in
-    // Errors are not cached. Replaced errors are also not cached.
-    expensiveOperationPublisher(x).replacingErrorsWithUncached { error in
-        Just(replacement)
-    }
+// Replace Errors with Uncached
+events.flatMap(cache: .disk(id: "foo")) { incoming in
+    // Errors are not cached. Replacements are also not cached.
+    expensiveOperationPublisher(incoming)
+        .replacingErrorsWithUncached { error in Just(replacement) }
 }
 ```
 
 ## Installation
 
-CombineCacheMap is available as a Swift Package.
+CombineCacheMap is available as a Swift Package and a Cocoapod.
 
 ## Author
 
