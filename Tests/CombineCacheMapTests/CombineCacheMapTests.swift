@@ -387,7 +387,7 @@ final class CombineCacheMapTests: XCTestCase {
     func testFlatMapLatest_Memory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
-            Publishers.MergeMany(
+            Publishers.concatenate(
                 Just(2).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
                 Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
@@ -414,10 +414,10 @@ final class CombineCacheMapTests: XCTestCase {
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
-            Publishers.MergeMany(
+            Publishers.concatenate(
                 Just(2).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
-                Just(1).delay(for: .seconds(4), scheduler: RunLoop.main)  // replayed
+                Just(1).delay(for: .seconds(3), scheduler: RunLoop.main)  // replayed
             )
             .flatMapLatest(cache: cache) { x in
                 AnyPublisher.create {
@@ -435,25 +435,17 @@ final class CombineCacheMapTests: XCTestCase {
         XCTAssertEqual(cacheMisses, 2)
     }
 
-    func testFlatMapLatestExpiring_Memory() {
-        var cancellables: Set<AnyCancellable> = []
+    func testFlatMapLatestExpiring_Memory() throws {
         var cacheMisses: Int = 0
-        var eventCount: Int = 0
-        var receivedValues: [Int] = []
-        let testScheduler = DispatchQueue.test
-        let expectation = XCTestExpectation(description: "Complete processing of publishers")
 
-        Publishers.MergeMany(
-            Just(1).delay(for: .seconds(0), scheduler: testScheduler),  // cancelled (miss if eager)
-            Just(1).delay(for: .seconds(1), scheduler: testScheduler),  // missed
-            Just(1).delay(for: .seconds(4), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(7), scheduler: testScheduler),  // cancelled (miss if eager)
-            Just(1).delay(for: .seconds(8), scheduler: testScheduler),  // missed
-            Just(1).delay(for: .seconds(11), scheduler: testScheduler)  // replayed
+        let receivedValues = try Publishers.concatenate(
+            Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled (miss if eager)
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // cancelled (miss if eager)
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main)  // replayed
         )
-        .handleEvents(receiveOutput: { _ in
-            eventCount += 1
-        })
         .flatMapLatest(cache: .memory()) { x in
             AnyPublisher.create {
                 cacheMisses += 1
@@ -461,51 +453,29 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .delay(for: .seconds(2), scheduler: testScheduler)
+            .delay(for: .seconds(2), scheduler: RunLoop.main)
             .cachingUntil { _ in Date() + 4 }
         }
-        .sink(receiveCompletion: { _ in
-            expectation.fulfill()
-        }, receiveValue: { value in
-            receivedValues.append(value)
-        })
-        .store(in: &cancellables)
+        .toBlocking(timeout: 14)
 
-        Array(0..<15).map(Double.init).forEach { x in
-            DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
-                testScheduler.advance(by: .seconds(1))
-            }
-        }
-
-        wait(for: [expectation], timeout: 14)
-
-        XCTAssertEqual(receivedValues.count, 4)
         XCTAssertEqual(receivedValues, [3, 3, 5, 5])
         XCTAssertEqual(cacheMisses, 4)
     }
 
-    func testFlatMapLatestExpiring_Disk() {
+    func testFlatMapLatestExpiring_Disk() throws {
         let cache = Persisting<Int, Cachable.Event<Int>>.disk(id: "\(#function)")
         cache.reset()
 
-        var cancellables: Set<AnyCancellable> = []
         var cacheMisses: Int = 0
-        var eventCount: Int = 0
-        var receivedValues: [Int] = []
-        let testScheduler = DispatchQueue.test
-        let expectation = XCTestExpectation(description: "Complete processing of publishers")
 
-        Publishers.MergeMany(
-            Just(1).delay(for: .seconds(0), scheduler: testScheduler),  // cancelled (miss if eager)
-            Just(1).delay(for: .seconds(1), scheduler: testScheduler),  // missed
-            Just(1).delay(for: .seconds(4), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(7), scheduler: testScheduler),  // cancelled (miss if eager)
-            Just(1).delay(for: .seconds(8), scheduler: testScheduler),  // missed
-            Just(1).delay(for: .seconds(11), scheduler: testScheduler)  // replayed
+        let receivedValues = try Publishers.concatenate(
+            Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // cancelled (miss if eager)
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // cancelled (miss if eager)
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // missed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main)  // replayed
         )
-        .handleEvents(receiveOutput: { _ in
-            eventCount += 1
-        })
         .flatMapLatest(cache: .disk(id: "\(#function)")) { x in
             AnyPublisher.create {
                 cacheMisses += 1
@@ -513,25 +483,11 @@ final class CombineCacheMapTests: XCTestCase {
                 $0.send(completion: .finished)
                 return AnyCancellable {}
             }
-            .delay(for: .seconds(2), scheduler: testScheduler)
+            .delay(for: .seconds(2), scheduler: RunLoop.main)
             .cachingUntil { _ in Date() + 4 }
         }
-        .sink(receiveCompletion: { _ in
-            expectation.fulfill()
-        }, receiveValue: { value in
-            receivedValues.append(value)
-        })
-        .store(in: &cancellables)
+        .toBlocking(timeout: 14)
 
-        Array(0..<15).map(Double.init).forEach { x in
-            DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
-                testScheduler.advance(by: .seconds(1))
-            }
-        }
-
-        wait(for: [expectation], timeout: 14)
-
-        XCTAssertEqual(receivedValues.count, 4)
         XCTAssertEqual(receivedValues, [3, 3, 5, 5])
         XCTAssertEqual(cacheMisses, 4)
     }
@@ -565,10 +521,10 @@ final class CombineCacheMapTests: XCTestCase {
 
         var cacheMisses: Int = 0
         try XCTAssertEqual(
-            Publishers.MergeMany(
+            Publishers.concatenate(
                 Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // missed
                 Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
-                Just(1).delay(for: .seconds(2), scheduler: RunLoop.main)  // replayed
+                Just(1).delay(for: .seconds(1), scheduler: RunLoop.main)  // replayed
             )
             .flatMap(cache: .disk(id: "\(#function)")) { x in
                 AnyPublisher.create {
@@ -589,22 +545,18 @@ final class CombineCacheMapTests: XCTestCase {
         let cache = Persisting<Int, AnyPublisher<Cachable.Event<Int>, Error>>.memory()
         cache.reset()
 
-        var cancellables: Set<AnyCancellable> = []
         var cacheMisses: Int = 0
         var eventCount: Int = 0
-        var receivedValues: [Int] = []
-        let testScheduler = DispatchQueue.test
-        let expectation = XCTestExpectation(description: "Complete processing of publishers")
 
-        Publishers.MergeMany(
-            Just(1).delay(for: .seconds(0), scheduler: testScheduler),  // miss 1
-            Just(1).delay(for: .seconds(1), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(4), scheduler: testScheduler),  // miss 2
-            Just(1).delay(for: .seconds(5), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(8), scheduler: testScheduler),  // miss 3
-            Just(1).delay(for: .seconds(9), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(12), scheduler: testScheduler), // miss 4
-            Just(1).delay(for: .seconds(13), scheduler: testScheduler)  // replayed
+        let receivedValues = try Publishers.concatenate(
+            Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // miss 1
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 2
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 3
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 4
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main)  // replayed
         )
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
@@ -618,20 +570,7 @@ final class CombineCacheMapTests: XCTestCase {
             }
             .cachingUntil { _ in Date() + 2 }
         }
-        .sink(receiveCompletion: { _ in
-            expectation.fulfill()
-        }, receiveValue: { value in
-            receivedValues.append(value)
-        })
-        .store(in: &cancellables)
-
-        Array(0..<14).map(Double.init).forEach { x in
-            DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
-                testScheduler.advance(by: .seconds(1))
-            }
-        }
-
-        wait(for: [expectation], timeout: 15)
+        .toBlocking(timeout: 15)
 
         XCTAssertEqual(receivedValues, [1, 1, 1, 1, 2, 2, 2, 2])
         XCTAssertEqual(cacheMisses, 4)
@@ -641,22 +580,18 @@ final class CombineCacheMapTests: XCTestCase {
         let cache = Persisting<Int, AnyPublisher<Cachable.Event<Int>, Error>>.disk(id: "\(#function)")
         cache.reset()
 
-        var cancellables: Set<AnyCancellable> = []
         var cacheMisses: Int = 0
         var eventCount: Int = 0
-        var receivedValues: [Int] = []
-        let testScheduler = DispatchQueue.test
-        let expectation = XCTestExpectation(description: "Complete processing of publishers")
 
-        Publishers.MergeMany(
-            Just(1).delay(for: .seconds(0), scheduler: testScheduler),  // miss 1
-            Just(1).delay(for: .seconds(1), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(4), scheduler: testScheduler),  // miss 2
-            Just(1).delay(for: .seconds(5), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(8), scheduler: testScheduler),  // miss 3
-            Just(1).delay(for: .seconds(9), scheduler: testScheduler),  // replayed
-            Just(1).delay(for: .seconds(12), scheduler: testScheduler), // miss 4
-            Just(1).delay(for: .seconds(13), scheduler: testScheduler)  // replayed
+        let receivedValues = try Publishers.concatenate(
+            Just(1).delay(for: .seconds(0), scheduler: RunLoop.main), // miss 1
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 2
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 3
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main), // replayed
+            Just(1).delay(for: .seconds(3), scheduler: RunLoop.main), // miss 4
+            Just(1).delay(for: .seconds(1), scheduler: RunLoop.main)  // replayed
         )
         .handleEvents(receiveOutput: { _ in
             eventCount += 1
@@ -670,20 +605,7 @@ final class CombineCacheMapTests: XCTestCase {
             }
             .cachingUntil { _ in Date() + 2 }
         }
-        .sink(receiveCompletion: { _ in
-            expectation.fulfill()
-        }, receiveValue: { value in
-            receivedValues.append(value)
-        })
-        .store(in: &cancellables)
-
-        Array(0..<14).map(Double.init).forEach { x in
-            DispatchQueue.main.asyncAfter(deadline: .now() + x + 1) {
-                testScheduler.advance(by: .seconds(1))
-            }
-        }
-
-        wait(for: [expectation], timeout: 15)
+        .toBlocking(timeout: 15)
 
         XCTAssertEqual(receivedValues, [1, 1, 1, 1, 2, 2, 2, 2])
         XCTAssertEqual(cacheMisses, 4)
@@ -1421,5 +1343,15 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1, 1, 1]
         )
         XCTAssertEqual(cacheMisses, 4)
+    }
+}
+
+private extension Publishers {
+    static func concatenate<P: Publisher>(_ publishers: P...) -> AnyPublisher<P.Output, P.Failure> where P.Failure: Equatable {
+        publishers.reduce(Empty().eraseToAnyPublisher()) { sum, next in
+            sum
+                .append(next)
+                .eraseToAnyPublisher()
+        }
     }
 }

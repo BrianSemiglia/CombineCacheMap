@@ -129,7 +129,7 @@ extension Cachable.Value {
     public func cachingWithPolicy(
         conditions: @escaping ([Value]) -> Cachable.Span
     ) -> Cachable.ConditionalValue<Value, Failure> where Value: Codable {
-        Cachable.ConditionalValue <Value, Failure>.init {
+        Cachable.ConditionalValue <Value, Failure> {
             self
                 .value
                 .compactMap(\.value)
