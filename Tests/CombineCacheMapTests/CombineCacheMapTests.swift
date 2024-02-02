@@ -1219,7 +1219,6 @@ final class CombineCacheMapTests: XCTestCase {
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
                         $0.send(1)
                         $0.send(completion: .finished)
                         return AnyCancellable {}
@@ -1241,7 +1240,6 @@ final class CombineCacheMapTests: XCTestCase {
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
                         $0.send(1)
                         $0.send(completion: .finished)
                         return AnyCancellable {}
@@ -1263,7 +1261,6 @@ final class CombineCacheMapTests: XCTestCase {
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
                         $0.send(1)
                         $0.send(completion: .finished)
                         return AnyCancellable {}
@@ -1285,7 +1282,6 @@ final class CombineCacheMapTests: XCTestCase {
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
                         $0.send(1)
                         $0.send(completion: .finished)
                         return AnyCancellable {}
@@ -1307,7 +1303,7 @@ final class CombineCacheMapTests: XCTestCase {
                 .flatMap(cache: .memory()) { _ in
                     AnyPublisher.create {
                         cacheMisses += 1
-                        Thread.sleep(forTimeInterval: 2)
+                        Thread.sleep(forTimeInterval: 1)
                         $0.send(1)
                         $0.send(completion: .finished)
                         return AnyCancellable {}
