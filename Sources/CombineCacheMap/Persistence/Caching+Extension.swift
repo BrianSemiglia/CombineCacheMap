@@ -16,7 +16,6 @@ extension Publisher {
             self
                 .map(Cachable.Event.value)
                 .appending { .policy(conditions($0.compactMap(\.value))) }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -35,7 +34,6 @@ extension Publisher {
                     ))
                 }
                 .compactMap(\.value)
-                .eraseToAnyPublisher()
         }
     }
 
@@ -46,7 +44,6 @@ extension Publisher {
             self
                 .map(Cachable.Event.value)
                 .appending { .policy(.until(condition($0.compactMap(\.value)))) }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -78,7 +75,6 @@ extension Publisher {
                         return value > duration ? Cachable.Event.policy(.always) : .policy(.never)
                     }
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -107,7 +103,6 @@ extension Publisher {
                         .map { .value($0) }
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -157,7 +152,6 @@ extension Cachable.Value {
                     ))
                 }
                 .compactMap(\.value)
-                .eraseToAnyPublisher()
         }
     }
 
@@ -207,7 +201,6 @@ extension Cachable.Value {
                         return duration > limit ? .policy(.always) : .policy(.never)
                     }
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -222,7 +215,6 @@ extension Cachable.Value {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -237,7 +229,6 @@ extension Cachable.Value {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -252,7 +243,6 @@ extension Cachable.Value {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -276,7 +266,6 @@ extension Cachable.ConditionalValue {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -291,7 +280,6 @@ extension Cachable.ConditionalValue {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 
@@ -306,7 +294,6 @@ extension Cachable.ConditionalValue {
                         .map(Cachable.Event.value)
                         .append(.policy(.never))
                 }
-                .eraseToAnyPublisher()
         }
     }
 

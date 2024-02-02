@@ -70,7 +70,7 @@ extension Publisher where Self.Output: Hashable {
             id: \.self,
             transform: {
                 Cachable.Value(
-                    value: transform($0).eraseToAnyPublisher()
+                    value: transform($0)
                 )
             }
         )
