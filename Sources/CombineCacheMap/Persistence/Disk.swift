@@ -13,33 +13,35 @@ extension Persisting {
         Persisting<Key, Value>(
             backing: Self.directory.appendingPathExtension(id),
             set: { backing, value, key in
-                if let value {
+                if let value, let hashedValue = SHA256.sha256Hash(for: value), let key = SHA256.sha256Hash(for: key) {
                     try? FileManager.default.createDirectory(
                         at: backing,
                         withIntermediateDirectories: true
                     )
                     try? JSONEncoder()
                         .encode(value)
-                        .write(to: backing.appendingPathComponent("\(SHA256.sha256Hash(for: value)!)")) // TODO: Revisit force unwrap
+                        .write(to: backing.appendingPathComponent("\(hashedValue)"))
                     try? JSONEncoder()
-                        .encode(SHA256.sha256Hash(for: value)!)
+                        .encode(hashedValue)
                         .write(
                             to: backing
-                                .appendingPathComponent(SHA256.sha256Hash(for: key)!)
+                                .appendingPathComponent(key)
                                 .appendingPathExtension("_key")
                         )
-                } else {
+                } else if let hashedValue = SHA256.sha256Hash(for: value) {
                     try? FileManager
                         .default
-                        .removeItem(at: backing.appendingPathComponent("\(SHA256.sha256Hash(for: value)!)")) // TODO: Revisit force unwrap
+                        .removeItem(at: backing.appendingPathComponent("\(hashedValue)"))
                 }
             },
             value: { backing, key in
-                backing
-                    .appendingPathComponent(SHA256.sha256Hash(for: key)!) // TODO: Revisit force unwrap
-                    .appendingPathExtension("_key")
-                    .contents(as: String.self)
-                    .flatMap { backing.appendingPathComponent($0).contents(as: Value.self) }
+                SHA256.sha256Hash(for: key).flatMap { key in
+                    backing
+                        .appendingPathComponent(key)
+                        .appendingPathExtension("_key")
+                        .contents(as: String.self)
+                        .flatMap { backing.appendingPathComponent($0).contents(as: Value.self) }
+                }
             },
             reset: { backing in
                 try? FileManager.default.removeItem(at: backing)
