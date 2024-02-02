@@ -72,16 +72,14 @@ public enum Cachable {
 
     public struct Value<Value, Failure: Error> where Value: Codable {
         public let value: AnyPublisher<Cachable.Event<Value>, Failure>
-
-        init(value: @escaping () -> AnyPublisher<Cachable.Event<Value>, Failure>) {
+        init<P: Publisher>(value: @escaping () -> P) where P.Output == Cachable.Event<Value>, P.Failure == Failure {
             self.value = Deferred { value() }.eraseToAnyPublisher()
         }
     }
 
     public struct ConditionalValue<Value, Failure: Error> where Value: Codable {
         public let value: AnyPublisher<Cachable.Event<Value>, Failure>
-
-        init(value: @escaping () -> AnyPublisher<Cachable.Event<Value>, Failure>) {
+        init<P: Publisher>(value: @escaping () -> P) where P.Output == Cachable.Event<Value>, P.Failure == Failure {
             self.value = Deferred { value() }.eraseToAnyPublisher()
         }
     }
