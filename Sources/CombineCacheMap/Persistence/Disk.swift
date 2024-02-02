@@ -10,7 +10,7 @@ extension Persisting {
     }
 
     static func diskRedundantFiltered(id: String) -> Persisting<Key, Value> where Key: Codable, Value: Codable {
-        Persisting<Key, Value>(
+        Persisting(
             backing: Self.directory.appendingPathExtension(id),
             set: { backing, value, key in
                 if let value, let hashedValue = SHA256.sha256Hash(for: value), let key = SHA256.sha256Hash(for: key) {
@@ -52,7 +52,7 @@ extension Persisting {
     public static func disk<V>(
         id: String
     ) -> Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>> where Key: Codable, Value == AnyPublisher<Cachable.Event<V>, Never> {
-        Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>>(
+        Persisting(
             backing: (
                 writes: TypedCache<String, AnyPublisher<Cachable.Event<V>, Never>>(),
                 memory: Persisting<String, [WrappedEvent<Cachable.Event<V>>]>.memoryRedundantFiltered(),
@@ -145,7 +145,7 @@ extension Persisting {
                 if let write = backing.writes.object(forKey: key) {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
-                    backing.writes.removeObject(forKey: key) // SIDE-EFFECT
+                    backing.writes.removeObject(forKey: key)
 
                     let shared = write.replayingIndefinitely
 
@@ -266,43 +266,36 @@ extension SHA256 {
 
 private extension URL {
     func contents<T>(as: T.Type) -> T? where T: Decodable {
-        if let data = try? Data(contentsOf: self) {
-            if let contents = try? JSONDecoder().decode(T.self, from: data) {
-                return contents
-            } else {
-                return nil
-            }
+        if let data = try? Data(contentsOf: self), let contents = try? JSONDecoder().decode(T.self, from: data) {
+            return contents
         } else {
             return nil
         }
     }
 }
 
-extension Collection {
-    func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<Cachable.Event<T>, F> {
-        reversed().first {
-            switch $0.event {
-            case .value(let value):
-                switch value {
-                case .policy: return value.satisfiesPolicy
-                default: return false
-                }
-            case .failure: return false
-            default: return false
-            }
+private extension CombineExt.Event {
+    var value: Output? {
+        switch self {
+        case .value(let value): return value
+        default: return nil
         }
-        != nil
+    }
+}
+
+extension Collection {
+    func isValid<T>() -> Bool where Element == WrappedEvent<Cachable.Event<T>> {
+        reversed().map(\.event).isValid()
     }
 
-    func isValid<T>() -> Bool where Element == WrappedEvent<Cachable.Event<T>> {
+    func isValid<T, F: Error>() -> Bool where Element == CombineExt.Event<Cachable.Event<T>, F> {
+        reversed().compactMap(\.value).isValid()
+    }
+
+    func isValid<T>() -> Bool where Element == Cachable.Event<T> {
         reversed().first {
-            switch $0.event {
-            case .value(let value):
-                switch value {
-                case .policy: return value.satisfiesPolicy
-                default: return false
-                }
-            case .failure: return false
+            switch $0 {
+            case .policy: return $0.satisfiesPolicy
             default: return false
             }
         }
