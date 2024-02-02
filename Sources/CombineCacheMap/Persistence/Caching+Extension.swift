@@ -337,34 +337,27 @@ private extension Publisher {
         let shared = multicast(subject: UnboundReplaySubject())
         var cancellable: Cancellable? = nil
         var completions = 0
-
-        let recorder = shared
-            .collect()
-            .flatMap(publisher)
-            .handleEvents(receiveCompletion: { _ in
-                completions += 1
-                if completions == 2 {
-                    cancellable?.cancel()
-                    cancellable = nil
-                }
-            })
-            .eraseToAnyPublisher()
-
-        let live = shared
-            .handleEvents(receiveCompletion: { _ in
-                completions += 1
-                if completions == 2 {
-                    cancellable?.cancel()
-                    cancellable = nil
-                }
-            })
-            .eraseToAnyPublisher()
-
         cancellable = shared.connect()
 
         return Publishers.Concatenate(
-            prefix: live,
-            suffix: recorder
+            prefix: shared
+            .handleEvents(receiveCompletion: { _ in
+                completions += 1
+                if completions == 2 {
+                    cancellable?.cancel()
+                    cancellable = nil
+                }
+            }),
+            suffix: shared
+                .collect()
+                .flatMap(publisher)
+                .handleEvents(receiveCompletion: { _ in
+                    completions += 1
+                    if completions == 2 {
+                        cancellable?.cancel()
+                        cancellable = nil
+                    }
+                })
         )
         .eraseToAnyPublisher()
     }
