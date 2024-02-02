@@ -47,33 +47,6 @@ extension Persisting {
         )
     }
 
-    static func memoryRedundantFiltered() -> Persisting<Key, Value> where Key: Codable, Value: Codable {
-        Persisting<Key, Value>(
-            backing: (
-                keyHash: TypedCache<Key, String>(),
-                hashValue: TypedCache<String, Value>()
-            ),
-            set: { backing, value, key in
-                if let value, let hash = SHA256.sha256Hash(for: key) {
-                    backing.keyHash.setObject(hash, forKey: key)
-                    backing.hashValue.setObject(value, forKey: hash)
-                } else if let hash = SHA256.sha256Hash(for: value) {
-                    backing.keyHash.removeObject(forKey: key)
-                    backing.hashValue.removeObject(forKey: hash)
-                }
-            },
-            value: { backing, key in
-                backing.keyHash.object(forKey: key).flatMap {
-                    backing.hashValue.object(forKey: $0)
-                }
-            },
-            reset: { backing in
-                backing.keyHash.removeAllObjects()
-                backing.hashValue.removeAllObjects()
-            }
-        )
-    }
-
     public static func disk<V>(
         id: String
     ) -> Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>> where Key: Codable, Value == AnyPublisher<Cachable.Event<V>, Never> {
