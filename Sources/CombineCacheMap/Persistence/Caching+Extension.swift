@@ -29,7 +29,7 @@ extension Publisher {
                 .appending {
                     .value(.policy(
                         conditions(
-                            $0.last!.duration!,
+                            $0.last!.duration!, // TODO: Revisit force unwrap
                             $0.compactMap(\.value).compactMap(\.value)
                         )
                     ))
@@ -151,7 +151,7 @@ extension Cachable.Value {
                 .appending {
                     .value(.policy(
                         conditions(
-                            $0.last!.duration!,
+                            $0.last!.duration!, // TODO: Revisit force unwrap
                             $0.compactMap(\.value).compactMap(\.value)
                         )
                     ))

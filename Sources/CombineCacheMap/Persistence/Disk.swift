@@ -5,7 +5,74 @@ import CryptoKit
 
 extension Persisting {
 
-    private static var directory: URL { URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine") }
+    private static var directory: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("com.cachemap.combine")
+    }
+
+    static func diskRedundantFiltered(id: String) -> Persisting<Key, Value> where Key: Codable, Value: Codable {
+        Persisting<Key, Value>(
+            backing: Self.directory.appendingPathExtension(id),
+            set: { backing, value, key in
+                if let value {
+                    try? FileManager.default.createDirectory(
+                        at: backing,
+                        withIntermediateDirectories: true
+                    )
+                    try? JSONEncoder()
+                        .encode(value)
+                        .write(to: backing.appendingPathComponent("\(SHA256.sha256Hash(for: value)!)")) // TODO: Revisit force unwrap
+                    try? JSONEncoder()
+                        .encode(SHA256.sha256Hash(for: value)!)
+                        .write(
+                            to: backing
+                                .appendingPathComponent(SHA256.sha256Hash(for: key)!)
+                                .appendingPathExtension("_key")
+                        )
+                } else {
+                    try? FileManager
+                        .default
+                        .removeItem(at: backing.appendingPathComponent("\(SHA256.sha256Hash(for: value)!)")) // TODO: Revisit force unwrap
+                }
+            },
+            value: { backing, key in
+                backing
+                    .appendingPathComponent(SHA256.sha256Hash(for: key)!) // TODO: Revisit force unwrap
+                    .appendingPathExtension("_key")
+                    .contents(as: String.self)
+                    .flatMap { backing.appendingPathComponent($0).contents(as: Value.self) }
+            },
+            reset: { backing in
+                try? FileManager.default.removeItem(at: backing)
+            }
+        )
+    }
+
+    static func memoryRedundantFiltered() -> Persisting<Key, Value> where Key: Codable, Value: Codable {
+        Persisting<Key, Value>(
+            backing: (
+                keyHash: TypedCache<Key, String>(),
+                hashValue: TypedCache<String, Value>()
+            ),
+            set: { backing, value, key in
+                if let value, let hash = SHA256.sha256Hash(for: key) {
+                    backing.keyHash.setObject(hash, forKey: key)
+                    backing.hashValue.setObject(value, forKey: hash)
+                } else if let hash = SHA256.sha256Hash(for: value) {
+                    backing.keyHash.removeObject(forKey: key)
+                    backing.hashValue.removeObject(forKey: hash)
+                }
+            },
+            value: { backing, key in
+                backing.keyHash.object(forKey: key).flatMap {
+                    backing.hashValue.object(forKey: $0)
+                }
+            },
+            reset: { backing in
+                backing.keyHash.removeAllObjects()
+                backing.hashValue.removeAllObjects()
+            }
+        )
+    }
 
     public static func disk<V>(
         id: String
@@ -13,17 +80,19 @@ extension Persisting {
         Persisting<Key, AnyPublisher<Cachable.Event<V>, Never>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<Cachable.Event<V>, Never>>(),
-                memory: TypedCache<String, [WrappedEvent<Cachable.Event<V>>]>(),
-                disk: directory.appendingPathExtension(id)
+                memory: Persisting<String, [WrappedEvent<Cachable.Event<V>>]>.memoryRedundantFiltered(),
+                disk: Persisting<String, [WrappedEvent<Cachable.Event<V>>]>.diskRedundantFiltered(id: id)
             ),
             set: { backing, value, key in
-                backing.writes.setObject(
-                    value,
-                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                )
+                if let value, let key = SHA256.sha256Hash(for: key) {
+                    backing.writes.setObject(
+                        value,
+                        forKey: key
+                    )
+                }
             },
             value: { backing, key in
-                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                guard let key = SHA256.sha256Hash(for: key) else { return nil }
                 if let write = backing.writes.object(forKey: key) {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
@@ -34,34 +103,37 @@ extension Persisting {
                     return Publishers.Merge(
                         shared,
                         shared
-                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
+                            .materialize()
+                            .collect()
+                            .handleEvents(receiveOutput: { events in
+                                if events.isValid() {
+                                    backing.disk.set(events.map(WrappedEvent.init), key)
+                                }
+                            })
+                            .map { _ in () }
                             .setFailureType(to: Never.self)
                             .flatMap { _ in Empty() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
-                } else if let memory = backing.memory.object(forKey: key) {
+                } else if let memory = backing.memory.value(key) {
                     // 3. Further gets come from memory
-                    if memory.isValid() == false {
-                        backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
-                        return nil
-                    } else {
+                    if memory.isValid() {
                         return Publishers.publisher(from: memory)
+                    } else {
+                        backing.writes.removeObject(forKey: key)
+                        backing.memory.set(nil, key)
+                        backing.disk.set(nil, key)
+                        return nil
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
+                } else if let values = backing.disk.value(key) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isValid() {
-                        backing.memory.setObject(values, forKey: key)
+                        backing.memory.set(values, key)
                         return Publishers.publisher(from: values)
                     } else {
                         backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
+                        backing.memory.set(nil, key)
+                        backing.disk.set(nil, key)
                         return nil
                     }
                 } else {
@@ -70,10 +142,8 @@ extension Persisting {
             },
             reset: { backing in
                 backing.writes.removeAllObjects()
-                backing.memory.removeAllObjects()
-                try? FileManager.default.removeItem(
-                    at: backing.disk
-                )
+                backing.memory.reset()
+                backing.disk.reset()
             }
         )
     }
@@ -84,17 +154,19 @@ extension Persisting {
         Persisting<Key, AnyPublisher<Cachable.Event<V>, Error>>(
             backing: (
                 writes: TypedCache<String, AnyPublisher<Cachable.Event<V>, Error>>(),
-                memory: TypedCache<String, [WrappedEvent<Cachable.Event<V>>]>(),
-                disk: directory.appendingPathExtension(id)
+                memory: Persisting<String, [WrappedEvent<Cachable.Event<V>>]>.memoryRedundantFiltered(),
+                disk: Persisting<String, [WrappedEvent<Cachable.Event<V>>]>.diskRedundantFiltered(id: id)
             ),
             set: { backing, value, key in
-                backing.writes.setObject(
-                    value,
-                    forKey: try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                )
+                if let value, let key = SHA256.sha256Hash(for: key) {
+                    backing.writes.setObject(
+                        value,
+                        forKey: key
+                    )
+                }
             },
             value: { backing, key in
-                let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
+                guard let key = SHA256.sha256Hash(for: key) else { return nil }
                 if let write = backing.writes.object(forKey: key) {
                     // 1. Publisher needs to execute once to capture values.
                     //    Removal afterwards prevents redundant write and causes next access to trigger disk read.
@@ -105,34 +177,37 @@ extension Persisting {
                     return Publishers.Merge(
                         shared,
                         shared
-                            .persistingOutputAsSideEffect(to: backing.disk, withKey: key)
+                            .materialize()
+                            .collect()
+                            .handleEvents(receiveOutput: { events in
+                                if events.isValid() {
+                                    backing.disk.set(events.map(WrappedEvent.init), key)
+                                }
+                            })
+                            .map { _ in () }
                             .setFailureType(to: Error.self)
                             .flatMap { _ in Empty() } // publisher completes with nothing (void)
                             .eraseToAnyPublisher()
                     ).eraseToAnyPublisher()
-                } else if let memory = backing.memory.object(forKey: key) {
+                } else if let memory = backing.memory.value(key) {
                     // 3. Further gets come from memory
                     if memory.isValid() {
                         return Publishers.publisher(from: memory)
                     } else {
                         backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
+                        backing.memory.set(nil, key)
+                        backing.disk.set(nil, key)
                         return nil
                     }
-                } else if let values = backing.disk.appendingPathComponent("\(key)").contents(as: [WrappedEvent<Cachable.Event<V>>].self) {
+                } else if let values = backing.disk.value(key) {
                     // 2. Data is made an observable again but without the disk write side-effect
                     if values.isValid() {
-                        backing.memory.setObject(values, forKey: key)
+                        backing.memory.set(values, key)
                         return Publishers.publisher(from: values)
                     } else {
                         backing.writes.removeObject(forKey: key)
-                        backing.memory.removeObject(forKey: key)
-                        try? FileManager.default.removeItem(
-                            at: backing.disk.appendingPathExtension("\(key)")
-                        )
+                        backing.memory.set(nil, key)
+                        backing.disk.set(nil, key)
                         return nil
                     }
                 } else {
@@ -141,10 +216,8 @@ extension Persisting {
             },
             reset: { backing in
                 backing.writes.removeAllObjects()
-                backing.memory.removeAllObjects()
-                try? FileManager.default.removeItem(
-                    at: backing.disk
-                )
+                backing.memory.reset()
+                backing.disk.reset()
             }
         )
     }
@@ -153,43 +226,29 @@ extension Persisting {
         id: String
     ) -> Persisting<Key, Value> where Key: Codable, Value == Cachable.Event<T> {
         Persisting<Key, Value>(
-            backing: directory.appendingPathExtension(id),
-            set: { folder, value, key in
-                if value.satisfiesPolicy {
-                    let key = try! Persisting.sha256Hash(for: key) // TODO: Revisit force unwrap
-                    do {
-                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        try JSONEncoder().encode(value).write(to: folder.appendingPathComponent("\(key)"))
-                    } catch {
-
+            backing: Persisting<Key, Value>.diskRedundantFiltered(id: id),
+            set: { backing, value, key in
+                if value?.satisfiesPolicy == true {
+                    backing.set(
+                        value,
+                        key
+                    )
+                }
+            },
+            value: { backing, key in
+                backing.value(key).flatMap { x in
+                    if x.satisfiesPolicy {
+                        return x
+                    } else {
+                        backing.set(nil, key)
+                        return nil
                     }
                 }
             },
-            value: { folder, key in
-                (try? Persisting.sha256Hash(for: key))
-                    .flatMap { key in folder.appendingPathComponent("\(key)").contents(as: Value.self) }
-                    .flatMap { x in
-                        if x.satisfiesPolicy {
-                            return x
-                        } else {
-                            try? FileManager.default.removeItem(at: folder.appendingPathComponent("\(key)"))
-                            return nil
-                        }
-                    }
-            },
-            reset: { url in
-                try? FileManager.default.removeItem(
-                    at: url
-                )
+            reset: { backing in
+                backing.reset()
             }
         )
-    }
-
-    static func sha256Hash<T: Codable>(for data: T) throws -> String {
-        SHA256
-            .hash(data: try JSONEncoder().encode(data))
-            .compactMap { String(format: "%02x", $0) }
-            .joined()
     }
 
     // Testing
@@ -209,13 +268,24 @@ extension Persisting {
                             to: Self
                                 .directory
                                 .appendingPathExtension(id)
-                                .appendingPathComponent("\(try! Persisting<K, V>.sha256Hash(for: key))")
+                                .appendingPathComponent("\(SHA256.sha256Hash(for: key)!)") // TODO: Revisit force unwrap
                         )
                 } catch {
 
                 }
             })
             .sink { _ in }
+    }
+}
+
+extension SHA256 {
+    static func sha256Hash<T: Codable>(for data: T) -> String? {
+        (try? JSONEncoder().encode(data)).map { encoded in
+            SHA256
+                .hash(data: encoded)
+                .compactMap { String(format: "%02x", $0) }
+                .joined()
+        }
     }
 }
 
@@ -379,31 +449,6 @@ extension Publishers {
                         .eraseToAnyPublisher()
                 }
             }
-            .eraseToAnyPublisher()
-    }
-}
-
-private extension Publisher {
-    func persistingOutputAsSideEffect<Key, T>(to url: URL, withKey key: Key) -> AnyPublisher<Void, Never> where Key: Codable, Output: Codable, Output == Cachable.Event<T> {
-        self
-            .materialize()
-            .collect()
-            .handleEvents(receiveOutput: { events in
-                if events.isValid() {
-                    do {
-                        try FileManager.default.createDirectory(
-                            at: url,
-                            withIntermediateDirectories: true
-                        )
-                        try JSONEncoder()
-                            .encode(events.map(WrappedEvent.init))
-                            .write(to: url.appendingPathComponent("\(key)"))
-                    } catch {
-
-                    }
-                }
-            })
-            .map { _ in () }
             .eraseToAnyPublisher()
     }
 }

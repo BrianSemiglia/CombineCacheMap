@@ -3,13 +3,13 @@ import Combine
 
 public struct Persisting<Key, Value> {
 
-    public let set: (Value, Key) -> Void
+    public let set: (Value?, Key) -> Void
     public let value: (Key) -> Value?
-    private let _reset: () -> Void
+    public let reset: () -> Void
 
     public init<Backing>(
         backing: Backing,
-        set: @escaping (Backing, Value, Key) -> Void,
+        set: @escaping (Backing, Value?, Key) -> Void,
         value: @escaping (Backing, Key) -> Value?,
         reset: @escaping (Backing) -> Void
     ) {
@@ -19,13 +19,9 @@ public struct Persisting<Key, Value> {
         self.value = {
             value(backing, $0)
         }
-        self._reset = {
+        self.reset = {
             reset(backing)
         }
-    }
-
-    public func reset() {
-        self._reset()
     }
 }
 
