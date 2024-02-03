@@ -974,107 +974,6 @@ final class CombineCacheMapTests: XCTestCase {
             .store(in: &cancellables)
     }
 
-    func testFlatMapCaching() {
-        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Cachable.Value(value: $0)
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Cachable.Value(value: $0)
-                .cachingWhen { _ in true }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Cachable.Value(value: $0)
-                .cachingUntil { _ in Date() }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Cachable.Value(value: $0)
-                .cachingWhenExceeding(duration: 1)
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
-            Cachable.Value(value: $0)
-                .replacingErrorsWithUncached { _ in 99 }
-        }
-
-
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingUntil { _ in Date() + 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingWhen { _ in true }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .replacingErrorsWithUncached { _ in
-                    Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
-                }
-                .replacingErrorsWithUncached { _ in
-                    Just(99).eraseToAnyPublisher()
-                }
-                .replacingErrorsWithUncached { _ in 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .replacingErrorsWithUncached { _ in 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .replacingErrorsWithUncached { _ in 99 }
-                .replacingErrorsWithUncached { _ in 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingWhenExceeding(duration: 1.0)
-        }
-
-
-        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingUntil { _ in Date() + 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingWhen { _ in true }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .replacingErrorsWithUncached { _ in
-                    Just(99).setFailureType(to: Error.self).eraseToAnyPublisher()
-                }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .replacingErrorsWithUncached { _ in 99 }
-        }
-        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
-            Just($0)
-                .setFailureType(to: Error.self)
-                .eraseToAnyPublisher()
-                .cachingWhenExceeding(duration: 1.0)
-        }
-    }
-
     func testFlatMapWhenExceedingDurationAll_Memory() {
         var cacheMisses: Int = 0
         try XCTAssertEqual(
@@ -1339,6 +1238,167 @@ final class CombineCacheMapTests: XCTestCase {
             [1, 1, 1, 1]
         )
         XCTAssertEqual(cacheMisses, 4)
+    }
+}
+
+final class CombineCacheMapCompilerInferenceTests: XCTestCase {
+    func map() {
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0)
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0).cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0).cachingUntil { _ in Date() }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0).cachingWhenExceeding(duration: 1)
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0).replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0)
+                .cachingWhen { _ in true }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0)
+                .cachingUntil { _ in Date() }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).map(cache: .memory()) {
+            Cachable.Value(value: $0)
+                .cachingWhenExceeding(duration: 1)
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+    }
+
+    func flatMap() {
+
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0).cachingUntil { _ in Date() + 99 }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0).cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0).cachingWhenExceeding(duration: 1.0)
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .cachingUntil { _ in Date() + 99 }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .cachingWhen { _ in true }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0)
+                .cachingWhenExceeding(duration: 1.0)
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMap(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in Just(99) }
+                .replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in 99 }
+                .replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMap(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in Just(99) }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+    }
+
+    func flatMapLatest() {
+
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0).cachingUntil { _ in Date() + 99 }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0).cachingWhen { _ in true }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0).cachingWhenExceeding(duration: 1.0)
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .cachingUntil { _ in Date() + 99 }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .cachingWhen { _ in true }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0)
+                .cachingWhenExceeding(duration: 1.0)
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.setFailureType(to: Error.self).flatMapLatest(cache: .memory()) {
+            Just($0).replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in 99 }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in Just(99) }
+                .replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in 99 }
+                .replacingErrorsWithUncached { _ in Just(99) }
+        }
+        _ = [0].publisher.flatMapLatest(cache: .memory()) {
+            Just($0)
+                .replacingErrorsWithUncached { _ in Just(99) }
+                .replacingErrorsWithUncached { _ in 99 }
+        }
     }
 }
 

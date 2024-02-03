@@ -80,20 +80,7 @@ extension Publisher {
 
     public func replacingErrorsWithUncached<P: Publisher>(
         replacement: @escaping (Self.Failure) -> P
-    ) -> Cachable.Value<Self.Output, Self.Failure> where P.Output == Self.Output, P.Failure == Failure {
-        replacingErrorsWithUncached(replacement: replacement, type: P.Failure.self)
-    }
-
-    public func replacingErrorsWithUncached<P: Publisher>(
-        replacement: @escaping (Self.Failure) -> P
-    ) -> Cachable.Value<Self.Output, P.Failure> where P.Output == Self.Output, P.Failure == Never {
-        replacingErrorsWithUncached(replacement: replacement, type: P.Failure.self)
-    }
-
-    private func replacingErrorsWithUncached<E: Error, P: Publisher>(
-        replacement: @escaping (Self.Failure) -> P,
-        type: E.Type
-    ) -> Cachable.Value<Self.Output, E> where Self.Output: Codable, P.Output == Self.Output, P.Failure == E {
+    ) -> Cachable.Value<Self.Output, Self.Failure> where P.Output == Self.Output, P.Failure == Self.Failure {
         Cachable.Value {
             self
                 .map { .value($0) }
@@ -108,16 +95,10 @@ extension Publisher {
 
     public func replacingErrorsWithUncached<T>(
         replacement: @escaping (Self.Failure) -> T
-    ) -> Cachable.Value<Self.Output, Never> where Self.Output: Codable, T == Self.Output {
-        replacingErrorsWithUncached { Just(replacement($0)) }
+    ) -> Cachable.Value<Self.Output, Self.Failure> where Self.Output: Codable, T == Self.Output {
+        replacingErrorsWithUncached { Just(replacement($0)).setFailureType(to: Self.Failure.self) }
     }
 
-    @available (*, unavailable)
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Self.Failure) -> Never
-    ) -> Cachable.Value<Self.Output, Self.Failure> where Self.Output: Codable, Self.Failure == Never {
-        fatalError()
-    }
 }
 
 extension Cachable.Value {
@@ -218,20 +199,6 @@ extension Cachable.Value {
         }
     }
 
-    public func replacingErrorsWithUncached<P: Publisher>(
-        replacement: @escaping (Failure) -> P
-    ) -> Cachable.Value<Value, Never> where Value: Codable, P.Output == Value, P.Failure == Never {
-        Cachable.Value <Value, Never> {
-            self
-                .value
-                .catch { error in
-                    replacement(error)
-                        .map(Cachable.Event.value)
-                        .append(.policy(.never))
-                }
-        }
-    }
-
     public func replacingErrorsWithUncached(
         replacement: @escaping (Failure) -> Value
     ) -> Cachable.Value<Value, Never> where Value: Codable {
@@ -244,13 +211,6 @@ extension Cachable.Value {
                         .append(.policy(.never))
                 }
         }
-    }
-
-    @available (*, unavailable)
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Failure) -> Never
-    ) -> Cachable.Value<Value, Failure> where Value: Codable, Failure == Never {
-        fatalError()
     }
 }
 
@@ -295,13 +255,6 @@ extension Cachable.ConditionalValue {
                         .append(.policy(.never))
                 }
         }
-    }
-
-    @available (*, unavailable)
-    public func replacingErrorsWithUncached(
-        replacement: @escaping (Failure) -> Never
-    ) -> Cachable.ConditionalValue<Value, Failure> where Value: Codable, Failure == Never {
-        fatalError()
     }
 }
 
