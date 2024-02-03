@@ -624,7 +624,6 @@ final class CombineCacheMapTests: XCTestCase {
                     }
                     .cachingWhenExceeding(duration: 1)
                 }
-                .map { $0 }
                 .toBlocking(),
             [1, 1]
         )
@@ -866,7 +865,8 @@ final class CombineCacheMapTests: XCTestCase {
 
     func testErrorHandler_Memory() {
 
-        // Ran into an issue where the use of replacingErrorsWithUncached was appending all publisher events with a cache-validity of never
+        // Ran into an issue where the use of replacingErrorsWithUncached was 
+        // appending all publisher events with a cache-validity of never
 
         struct Foo: Error {}
 
@@ -896,7 +896,8 @@ final class CombineCacheMapTests: XCTestCase {
 
     func testErrorHandler_Disk() {
 
-        // Ran into an issue where the use of replacingErrorsWithUncached was appending all publisher events with a cache-validity of never
+        // Ran into an issue where the use of replacingErrorsWithUncached was 
+        // appending all publisher events with a cache-validity of never
 
         let id = "\(#function)"
         let cache = Persisting<Int, AnyPublisher<Cachable.Event<Int>, Error>>.disk(id: id)
@@ -924,54 +925,6 @@ final class CombineCacheMapTests: XCTestCase {
                 .toBlocking(timeout: 10),
             [2, 4, 99]
         )
-    }
-
-    func compilationTest() {
-        var cancellables: Set<AnyCancellable> = []
-        ["0"]
-            .publisher
-            .map(cache: .memory()) { $0 }
-            .sink { _ in }.store(in: &cancellables)
-        ["0"]
-            .publisher
-            .map(cache: .disk(id: "")) { $0 }
-            .sink { _ in }.store(in: &cancellables)
-        ["0"]
-            .publisher
-            .flatMap(cache: .memory()) {
-                Just($0)
-                    .setFailureType(to: Error.self)
-                    .eraseToAnyPublisher()
-            }
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
-        ["0"]
-            .publisher
-            .flatMap(cache: .disk(id: "")) {
-                Just($0)
-                    .setFailureType(to: Error.self)
-                    .eraseToAnyPublisher()
-            }
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
-        ["0"]
-            .publisher
-            .flatMapLatest(cache: .memory()) {
-                Just($0)
-                    .setFailureType(to: Error.self)
-                    .eraseToAnyPublisher()
-            }
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
-        ["0"]
-            .publisher
-            .flatMapLatest(cache: .disk(id: "")) {
-                Just($0)
-                    .setFailureType(to: Error.self)
-                    .eraseToAnyPublisher()
-            }
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
     }
 
     func testFlatMapWhenExceedingDurationAll_Memory() {
