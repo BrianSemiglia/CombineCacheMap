@@ -124,3 +124,193 @@ extension Cachable.Event {
         }
     }
 }
+
+extension Cachable.Value {
+    public func cachingWithPolicy(
+        conditions: @escaping ([Value]) -> Cachable.Span
+    ) -> Cachable.ConditionalValue<Value, Failure> where Value: Codable {
+        Cachable.ConditionalValue <Value, Failure> {
+            self
+                .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
+                .appending { .policy(conditions($0.compactMap(\.value))) }
+        }
+    }
+
+    public func cachingWithPolicy(
+        conditions: @escaping (TimeInterval, [Value]) -> Cachable.Span
+    ) -> Cachable.ConditionalValue<Value, Failure> where Value: Codable {
+        Cachable.ConditionalValue <Value, Failure> {
+            Publishers
+                .flatMapMeasured {
+                    value
+                        .compactMap(\.value)
+                        .map(Cachable.Event.value)
+                }
+                .appending {
+                    .value(.policy(
+                        conditions(
+                            $0.last!.duration!, // TODO: Revisit force unwrap
+                            $0.compactMap(\.value).compactMap(\.value)
+                        )
+                    ))
+                }
+                .compactMap(\.value)
+        }
+    }
+
+    public func cachingUntil(
+        condition: @escaping ([Value]) -> Date
+    ) -> Cachable.ConditionalValue<Value, Failure> {
+        Cachable.ConditionalValue <Value, Failure> {
+            self
+                .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
+                .appending { .policy(.until(condition($0.compactMap(\.value)))) }
+        }
+    }
+
+    public func cachingWhen(
+        condition: @escaping ([Value]) -> Bool
+    ) -> Cachable.ConditionalValue<Value, Failure> {
+        Cachable.ConditionalValue <Value, Failure> {
+            self
+                .value
+                .compactMap(\.value)
+                .map(Cachable.Event.value)
+                .appending {
+                    condition($0.compactMap(\.value))
+                    ? .policy(.always)
+                    : .policy(.never)
+                }
+        }
+    }
+
+    public func cachingWhenExceeding(
+        duration limit: TimeInterval
+    ) -> Cachable.ConditionalValue<Value, Failure> {
+        Cachable.ConditionalValue {
+            Publishers
+                .flatMapMeasured {
+                    value
+                        .compactMap(\.value)
+                        .map(Cachable.Event.value)
+                }
+                .map {
+                    switch $0 {
+                    case .value(let value):
+                        return value
+                    case .duration(let duration):
+                        return duration > limit ? .policy(.always) : .policy(.never)
+                    }
+                }
+        }
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Failure) -> P
+    ) -> Cachable.Value<Value, Failure> where Value: Codable, P.Output == Value, P.Failure == Failure {
+        Cachable.Value <Value, Failure> {
+            self
+                .value
+                .catch { error in
+                    replacement(error)
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+        }
+    }
+
+    public func replacingErrorsWithUncached(
+        replacement: @escaping (Failure) -> Value
+    ) -> Cachable.Value<Value, Never> where Value: Codable {
+        Cachable.Value <Value, Never> {
+            self
+                .value
+                .catch { error in
+                    Just(replacement(error))
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+        }
+    }
+}
+
+extension Cachable.ConditionalValue {
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Failure) -> P
+    ) -> Cachable.ConditionalValue<Value, Failure> where Value: Codable, P.Output == Value, P.Failure == Failure {
+        Cachable.ConditionalValue <Value, Failure> {
+            self
+                .value
+                .catch { error in
+                    replacement(error)
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+        }
+    }
+
+    public func replacingErrorsWithUncached<P: Publisher>(
+        replacement: @escaping (Failure) -> P
+    ) -> Cachable.ConditionalValue<Value, Never> where Value: Codable, P.Output == Value, P.Failure == Never {
+        Cachable.ConditionalValue <Value, Never> {
+            self
+                .value
+                .catch { error in
+                    replacement(error)
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+        }
+    }
+
+    public func replacingErrorsWithUncached(
+        replacement: @escaping (Failure) -> Value
+    ) -> Cachable.ConditionalValue<Value, Never> where Value: Codable {
+        Cachable.ConditionalValue <Value, Never> {
+            self
+                .value
+                .catch { error in
+                    Just(replacement(error))
+                        .map(Cachable.Event.value)
+                        .append(.policy(.never))
+                }
+        }
+    }
+}
+
+public enum Measured<T>: Codable where T: Codable {
+    case value(T)
+    case duration(TimeInterval)
+    var value: T? {
+        switch self {
+        case .value(let value): return value
+        default: return nil
+        }
+    }
+    var duration: TimeInterval? {
+        switch self {
+        case .duration(let value): return value
+        default: return nil
+        }
+    }
+}
+
+extension Publishers {
+    static func flatMapMeasured<P: Publisher>(
+        transform: @escaping () -> P
+    ) -> AnyPublisher<Measured<P.Output>, P.Failure> {
+        Just(())
+            .setFailureType(to: P.Failure.self)
+            .flatMap {
+                let startDate = Date()
+                return transform()
+                    .map { Measured.value($0) }
+                    .appending { _ in .duration(Date().timeIntervalSince(startDate)) }
+            }
+            .eraseToAnyPublisher()
+    }
+}
