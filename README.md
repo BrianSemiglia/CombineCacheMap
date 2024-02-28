@@ -10,12 +10,13 @@ map { (x: Any)     -> Codable in ... } 🪄 map(cache: .memory(), id: \.keyPath)
 ## Caching
 
 ```swift
-// Maps are executed once per unique `incoming`, replayed when not.
+// Maps are executed once per unique `incoming`, replayed afterwards.
 
 events.map(cache: .memory()) { incoming in
     expensiveOperation(incoming)
 }
 
+// FlatMaps are executed once per unique `incoming` that completes successfully, replayed afterwards. 
 events.flatMap(cache: .disk(id: "foo")) { incoming in
     Just(expensiveOperation(incoming))
 }
