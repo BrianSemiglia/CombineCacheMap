@@ -1,10 +1,10 @@
 # CombineCacheMap
 
 ```swift
-// Cache/memoize the output of `Combine.Publishers`.
+// Cache/memoize the output of `Combine.Publishers` by adding a `cache` parameter to your maps.
 
-map { (x: Codable) -> Codable in ... } 🪄 map(cache: .memory()) { ... }
-map { (x: Any)     -> Codable in ... } 🪄 map(cache: .memory(), id: \.keyPath) { ... }
+publisher.map(cache: .memory())                { (x: Codable) -> Codable in ... }
+publisher.map(cache: .memory(), id: \.keyPath) { (x: Any)     -> Codable in ... }
 ```
 
 ## Caching
@@ -12,12 +12,12 @@ map { (x: Any)     -> Codable in ... } 🪄 map(cache: .memory(), id: \.keyPath)
 ```swift
 // Maps are executed once per unique `incoming`, replayed afterwards.
 
-events.map(cache: .memory()) { incoming in
+publisher.map(cache: .memory()) { incoming in
     expensiveOperation(incoming)
 }
 
 // FlatMaps are executed once per unique `incoming` that completes successfully, replayed afterwards. 
-events.flatMap(cache: .disk(id: "foo")) { incoming in
+publisher.flatMap(cache: .disk(id: "foo")) { incoming in
     Just(expensiveOperation(incoming))
 }
 ```
@@ -26,26 +26,26 @@ events.flatMap(cache: .disk(id: "foo")) { incoming in
 
 ```swift
 // Caching When
-events.map(cache: .memory()) { incoming in
+publisher.map(cache: .memory()) { incoming in
     Cachable
         .Value { expensiveOperation(incoming) }
         .cachingWhen { outputsOnceComplete in true }
 }
 
 // Caching Until
-events.flatMap(cache: .disk(id: "foo")) { incoming in
+publisher.flatMap(cache: .disk(id: "foo")) { incoming in
     expensivePublisher(incoming)
         .cachingUntil { outputsOnceComplete in Date() + hours(1) }
 }
 
 // Caching When Operation Exceeds Duration
-events.flatMap(cache: .disk(id: "foo")) { incoming in
+publisher.flatMap(cache: .disk(id: "foo")) { incoming in
     expensivePublisher(incoming)
         .cachingWhenExceeding(duration: seconds(1))
 }
 
 // Caching with Policy (for more granular control)
-events.flatMap(cache: .memory()) { incoming in
+publisher.flatMap(cache: .memory()) { incoming in
     expensivePublisher(incoming)
         .cachingWithPolicy { (computeDuration, outputsOnceComplete) in
             myCondition || computeDuration > 10 
@@ -55,7 +55,7 @@ events.flatMap(cache: .memory()) { incoming in
 }
 
 // Replace Errors with Uncached
-events.flatMap(cache: .disk(id: "foo")) { incoming in
+publisher.flatMap(cache: .disk(id: "foo")) { incoming in
     // Errors are not cached. Replacements are also not cached.
     expensivePublisher(incoming)
         .replacingErrorsWithUncached { error in Just(replacement) }
